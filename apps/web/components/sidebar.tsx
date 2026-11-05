@@ -8,7 +8,7 @@ import { sidebarSections } from "@/lib/groups";
 import { ago } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
 import { REPO } from "@/lib/runner";
-import { useSolus } from "@/lib/store";
+import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 /** The left edge bar carries the state; only attention states are loud. */
@@ -184,6 +184,7 @@ function WorkspaceRow({ task }: { task: Task }) {
   const now = useNow();
   const attention = isAttention(task.state);
   const hint = task.question ?? task.error?.message;
+  const title = useSolus((s) => displayTitle(s, task));
 
   return (
     <li className="group relative">
@@ -191,7 +192,7 @@ function WorkspaceRow({ task }: { task: Task }) {
         type="button"
         onClick={() => open(task.id)}
         aria-current={active ? "true" : undefined}
-        title={hint ? `${STATE_LABELS[task.state]}: ${hint}` : `${task.title} · ${STATE_LABELS[task.state]}`}
+        title={hint ? `${STATE_LABELS[task.state]}: ${hint}` : `${title} · ${STATE_LABELS[task.state]}`}
         className={cn(
           "relative flex h-9 w-full items-center gap-3 rounded-md pr-3 pl-3 text-left text-sm",
           "hover:bg-accent/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
@@ -211,7 +212,7 @@ function WorkspaceRow({ task }: { task: Task }) {
         )}
         <span className="sr-only">{STATE_LABELS[task.state]}:</span>
         <AgentIcon agent={task.agent} className={cn("size-3.5", !active && "opacity-70 grayscale")} />
-        <span className="min-w-0 flex-1 truncate">{task.title}</span>
+        <span className="min-w-0 flex-1 truncate">{title}</span>
         <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums group-hover:invisible">
           {now !== null ? ago(now - task.lastActivityAt) : ""}
         </span>
@@ -219,7 +220,7 @@ function WorkspaceRow({ task }: { task: Task }) {
       <button
         type="button"
         onClick={() => togglePin(task.id)}
-        aria-label={pinned ? `Unpin ${task.title}` : `Pin ${task.title}`}
+        aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
         className="absolute top-1/2 right-2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground group-hover:block hover:bg-accent hover:text-foreground focus-visible:block"
       >
         {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}

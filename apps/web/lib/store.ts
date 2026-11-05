@@ -31,6 +31,12 @@ interface SolusState {
   lastSeen: Record<string, number>;
   /** Sidebar filter. null when the search box is closed. */
   query: string | null;
+  /** Local display names, set by renaming a tab. Kept per browser. */
+  renames: Record<string, string>;
+  /** Recently closed tabs, newest first, for the history menu. */
+  closedTabs: string[];
+  /** Whether the changes/terminal pane is shown on wide screens. */
+  rightPaneOpen: boolean;
 
   open: (id: string) => void;
   closeTab: (id: string) => void;
@@ -43,6 +49,24 @@ interface SolusState {
   setNotice: (notice: string | null) => void;
   togglePin: (id: string) => void;
   setQuery: (query: string | null) => void;
+  rename: (id: string, title: string) => void;
+  toggleRightPane: () => void;
+}
+
+const RENAMES_KEY = "solus.renames";
+
+function loadRenames(): Record<string, string> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RENAMES_KEY) ?? "{}");
+    return v && typeof v === "object" ? (v as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The name shown for a task: the user's rename, or the task title. */
+export function displayTitle(s: Pick<SolusState, "renames">, task: Task): string {
+  return s.renames[task.id] ?? task.title;
 }
 
 const PINNED_KEY = "solus.pinned";
@@ -88,11 +112,15 @@ export const useSolus = create<SolusState>()((set, get) => ({
   pinned: [],
   lastSeen: {},
   query: null,
+  renames: {},
+  closedTabs: [],
+  rightPaneOpen: true,
 
   open: (id) =>
     set((s) => ({
       activeId: id,
       lastSeen: seen(s, s.activeId, id),
+      closedTabs: s.closedTabs.filter((t) => t !== id),
       openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
       showList: false,
       centerView: "chat",
@@ -104,7 +132,8 @@ export const useSolus = create<SolusState>()((set, get) => ({
       const openTabs = s.openTabs.filter((t) => t !== id);
       const activeId =
         s.activeId === id ? (openTabs[Math.min(i, openTabs.length - 1)] ?? null) : s.activeId;
-      return { openTabs, activeId, showList: activeId === null ? true : s.showList };
+      const closedTabs = [id, ...s.closedTabs.filter((t) => t !== id)].slice(0, 10);
+      return { openTabs, activeId, closedTabs, showList: activeId === null ? true : s.showList };
     }),
 
   cycleTab: (delta) => {
@@ -136,6 +165,18 @@ export const useSolus = create<SolusState>()((set, get) => ({
       return { pinned };
     }),
   setQuery: (query) => set({ query }),
+  rename: (id, title) =>
+    set((s) => {
+      const renames = { ...s.renames };
+      const trimmed = title.trim();
+      if (!trimmed || trimmed === s.tasks[id]?.title) delete renames[id];
+      else renames[id] = trimmed;
+      try {
+        localStorage.setItem(RENAMES_KEY, JSON.stringify(renames));
+      } catch {}
+      return { renames };
+    }),
+  toggleRightPane: () => set((s) => ({ rightPaneOpen: !s.rightPaneOpen })),
 }));
 
 /** Loads a snapshot from the runner and keeps the store in sync. Returns unsubscribe. */
@@ -216,6 +257,7 @@ export function connectRunner(runner: Runner): () => void {
       set((s) => ({
         status: "ready",
         pinned: loadPinned(),
+        renames: loadRenames(),
         // Everything that happened before you opened the app counts as seen.
         lastSeen: Object.fromEntries(entries.map(({ t }) => [t.id, s.lastSeen[t.id] ?? Date.now()])),
         tasks: Object.fromEntries(entries.map(({ t }) => [t.id, s.tasks[t.id] ?? t])),

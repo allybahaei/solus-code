@@ -5,15 +5,17 @@ import type { Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
+import { displayTitle, useSolus } from "@/lib/store";
 import { mergeTask, openPullRequest, startTask, stopTask } from "@/lib/actions";
 
 /** Title, branch, state, and the one action that moves the task forward. */
 export function TaskHeader({ task }: { task: Task }) {
   const { changes } = task;
+  const title = useSolus((s) => displayTitle(s, task));
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-sm font-medium">{task.title}</h1>
+        <h1 className="truncate text-sm font-medium">{title}</h1>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <StateLabel state={task.state} />
           <span className="inline-flex items-center gap-1.5">

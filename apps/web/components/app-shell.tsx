@@ -22,6 +22,7 @@ const EMPTY: never[] = [];
 export function AppShell() {
   const showList = useSolus((s) => s.showList);
   const wide = useMediaQuery("(min-width: 1024px)");
+  const rightPaneOpen = useSolus((s) => s.rightPaneOpen);
 
   useEffect(() => connectRunner(getRunner()), []);
   useKeyboard();
@@ -40,7 +41,7 @@ export function AppShell() {
         <TabBar />
         <ActiveTask wide={wide} />
       </main>
-      {wide && <RightPane />}
+      {wide && rightPaneOpen && <RightPane />}
       <NewTaskDialog />
       <Notice />
     </div>

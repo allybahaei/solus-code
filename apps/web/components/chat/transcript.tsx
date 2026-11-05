@@ -50,7 +50,7 @@ export function Transcript({ task, messages }: { task: Task; messages: AgentMess
       }}
       className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
     >
-      <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 text-sm leading-relaxed">
+      <div className="w-full space-y-5 px-4 py-6 text-sm leading-relaxed">
         {items.length === 0 && (
           <p className="text-muted-foreground">
             {task.state === "idle" ? "Not started yet. The agent will begin with this prompt:" : "No output yet."}
@@ -64,7 +64,7 @@ export function Transcript({ task, messages }: { task: Task; messages: AgentMess
             <ToolGroup key={item.id} calls={item.calls} live={task.state === "working" && i === items.length - 1} />
           ) : item.message.role === "user" ? (
             <div key={item.message.id} className="flex justify-end">
-              <div className="max-w-[85%] rounded-xl bg-secondary px-3.5 py-2 whitespace-pre-wrap">
+              <div className="max-w-[85%] rounded-2xl bg-secondary px-5 py-3.5 whitespace-pre-wrap">
                 {item.message.text}
               </div>
             </div>

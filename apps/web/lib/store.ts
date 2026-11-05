@@ -25,6 +25,12 @@ interface SolusState {
   showList: boolean;
   showMerged: boolean;
   newTaskOpen: boolean;
+  /** Pinned task ids, kept per browser. */
+  pinned: string[];
+  /** When the user last looked at each task; newer activity shows as unread. */
+  lastSeen: Record<string, number>;
+  /** Sidebar filter. null when the search box is closed. */
+  query: string | null;
 
   open: (id: string) => void;
   closeTab: (id: string) => void;
@@ -35,6 +41,33 @@ interface SolusState {
   toggleMerged: () => void;
   setNewTaskOpen: (open: boolean) => void;
   setNotice: (notice: string | null) => void;
+  togglePin: (id: string) => void;
+  setQuery: (query: string | null) => void;
+}
+
+const PINNED_KEY = "solus.pinned";
+
+function savePinned(pinned: string[]) {
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify(pinned));
+  } catch {}
+}
+
+function loadPinned(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Marks the task being left and the task being opened as seen. */
+function seen(s: SolusState, ...ids: (string | null)[]): Record<string, number> {
+  const now = Date.now();
+  const lastSeen = { ...s.lastSeen };
+  for (const id of ids) if (id) lastSeen[id] = now;
+  return lastSeen;
 }
 
 export const useSolus = create<SolusState>()((set, get) => ({
@@ -52,10 +85,14 @@ export const useSolus = create<SolusState>()((set, get) => ({
   showList: true,
   showMerged: false,
   newTaskOpen: false,
+  pinned: [],
+  lastSeen: {},
+  query: null,
 
   open: (id) =>
     set((s) => ({
       activeId: id,
+      lastSeen: seen(s, s.activeId, id),
       openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
       showList: false,
       centerView: "chat",
@@ -75,12 +112,12 @@ export const useSolus = create<SolusState>()((set, get) => ({
     if (openTabs.length === 0) return;
     const i = activeId ? openTabs.indexOf(activeId) : -1;
     const next = openTabs[(i + delta + openTabs.length) % openTabs.length];
-    if (next) set({ activeId: next, centerView: "chat" });
+    if (next) set((s) => ({ activeId: next, centerView: "chat", lastSeen: seen(s, s.activeId, next) }));
   },
 
   move: (delta) => {
-    const { tasks, activeId, showMerged, open } = get();
-    const order = navOrder(Object.values(tasks), showMerged);
+    const { tasks, activeId, showMerged, open, pinned, query } = get();
+    const order = navOrder(Object.values(tasks), pinned, showMerged, query ?? "");
     if (order.length === 0) return;
     const i = order.findIndex((t) => t.id === activeId);
     const next = i === -1 ? order[0] : order[Math.min(order.length - 1, Math.max(0, i + delta))];
@@ -92,6 +129,13 @@ export const useSolus = create<SolusState>()((set, get) => ({
   toggleMerged: () => set((s) => ({ showMerged: !s.showMerged })),
   setNewTaskOpen: (newTaskOpen) => set({ newTaskOpen }),
   setNotice: (notice) => set({ notice }),
+  togglePin: (id) =>
+    set((s) => {
+      const pinned = s.pinned.includes(id) ? s.pinned.filter((p) => p !== id) : [...s.pinned, id];
+      savePinned(pinned);
+      return { pinned };
+    }),
+  setQuery: (query) => set({ query }),
 }));
 
 /** Loads a snapshot from the runner and keeps the store in sync. Returns unsubscribe. */
@@ -171,12 +215,15 @@ export function connectRunner(runner: Runner): () => void {
       // Events may have arrived while loading; keep anything newer.
       set((s) => ({
         status: "ready",
+        pinned: loadPinned(),
+        // Everything that happened before you opened the app counts as seen.
+        lastSeen: Object.fromEntries(entries.map(({ t }) => [t.id, s.lastSeen[t.id] ?? Date.now()])),
         tasks: Object.fromEntries(entries.map(({ t }) => [t.id, s.tasks[t.id] ?? t])),
         messages: Object.fromEntries(entries.map(({ t, messages }) => [t.id, s.messages[t.id] ?? messages])),
         diffs: Object.fromEntries(entries.map(({ t, files }) => [t.id, s.diffs[t.id] ?? files])),
       }));
       if (get().activeId === null) {
-        const first = navOrder(Object.values(get().tasks), false)[0];
+        const first = navOrder(Object.values(get().tasks), get().pinned, false)[0];
         if (first) set({ activeId: first.id, openTabs: [first.id] });
       }
     } catch (err) {

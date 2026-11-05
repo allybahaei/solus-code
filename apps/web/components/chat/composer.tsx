@@ -35,7 +35,7 @@ export function Composer({ task }: { task: Task }) {
 
   return (
     <div className="shrink-0 px-4 pb-4">
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="w-full">
         {task.state === "needs_input" && task.question && (
           <Banner tone="needs_input" icon={<MessageCircleQuestion />} title="The agent is asking">
             {task.question}

@@ -6,10 +6,11 @@ import { Composer, COMPOSER_ID } from "@/components/chat/composer";
 import { TabBar } from "@/components/chat/tab-bar";
 import { TaskHeader } from "@/components/chat/task-header";
 import { Transcript } from "@/components/chat/transcript";
+import { Home } from "@/components/home";
 import { NewTaskDialog } from "@/components/new-task-dialog";
 import { Changes } from "@/components/side/changes";
 import { TerminalView } from "@/components/side/terminal";
-import { Sidebar } from "@/components/sidebar";
+import { SEARCH_ID, Sidebar } from "@/components/sidebar";
 import { mergeTask, openPullRequest, startTask } from "@/lib/actions";
 import { useMediaQuery } from "@/lib/hooks";
 import { getRunner } from "@/lib/runner";
@@ -59,7 +60,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
     return <Empty>Couldn&apos;t reach the runner: {error}</Empty>;
   }
   if (!task) {
-    return <Empty>{status === "connecting" ? "" : "Pick a workspace on the left, or press N to start a task."}</Empty>;
+    return status === "connecting" ? <Empty>{""}</Empty> : <Home />;
   }
 
   const current: CenterView = wide ? "chat" : view;
@@ -182,6 +183,10 @@ function useKeyboard() {
             return true;
           case "n":
             s.setNewTaskOpen(true);
+            return true;
+          case "/":
+            if (s.query === null) s.setQuery("");
+            else document.getElementById(SEARCH_ID)?.focus();
             return true;
           case "Enter":
             if (!task) return false;

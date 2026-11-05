@@ -32,7 +32,7 @@ const TEXT: Record<TaskState, string> = {
 /** Dot + label, for headers. */
 export function StateLabel({ state }: { state: TaskState }) {
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TEXT[state])}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium whitespace-nowrap", TEXT[state])}>
       <StateDot state={state} />
       {STATE_LABELS[state]}
     </span>

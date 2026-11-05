@@ -25,7 +25,7 @@ import {
   genericRevise,
   genericRun,
 } from "./scenarios";
-import { ansi, type AutoAction, type Scenario, type Step } from "./script";
+import { ansi, say, tool, type AutoAction, type Scenario, type Step } from "./script";
 
 export interface MockRunnerOptions {
   /** Time multiplier: 2 plays scripts twice as fast. Default 1. */
@@ -48,6 +48,21 @@ interface TaskRecord {
   /** Bumped on every state change, to drop stale autopilot actions. */
   stateGen: number;
   autopilot: AutoAction[];
+}
+
+/**
+ * When a request for changes carries review comments ("path:line" blocks),
+ * the agent first says which files it is going back to, then opens them.
+ */
+function reviewAck(message: string): Step[] {
+  const refs = [...message.matchAll(/^([\w./@-]+\.\w+):\d+/gm)].map((m) => m[1] ?? "").filter(Boolean);
+  if (refs.length === 0) return [];
+  const paths = [...new Set(refs)];
+  const list = paths.map((p) => `\`${p}\``).join(", ");
+  return [
+    say(500, `Going through your ${refs.length} review ${refs.length === 1 ? "comment" : "comments"} in ${list}.`),
+    ...paths.map((p, i) => tool(i === 0 ? 700 : 400, "Read", p)),
+  ];
 }
 
 const WORDS_PER_CHUNK = 3;
@@ -146,7 +161,7 @@ export class MockRunner implements Runner {
         const steps = rec.scenario?.onRevise ?? genericRevise;
         // A scenario's revision only plays once; later rounds are generic.
         if (rec.scenario) rec.scenario = { ...rec.scenario, onRevise: genericRevise };
-        this.play(rec, steps);
+        this.play(rec, [...reviewAck(message), ...steps]);
         break;
       }
       case "working":

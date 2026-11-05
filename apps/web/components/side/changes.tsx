@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { Check, MessageSquare } from "lucide-react";
 import type { DiffFile, Task } from "@solus/core";
 import { splitPath } from "@/lib/format";
+import { reviewOf, useReview } from "@/lib/review-store";
 import { cn } from "@/lib/utils";
 
 const STATUS: Record<DiffFile["status"], { letter: string; className: string; label: string }> = {
@@ -13,9 +13,15 @@ const STATUS: Record<DiffFile["status"], { letter: string; className: string; la
   renamed: { letter: "R", className: "text-state-working", label: "Renamed" },
 };
 
-/** Files changed in the task's worktree. Click a file to see its patch. */
+/**
+ * Files changed in the task's worktree. Clicking one opens the review at
+ * that file; while reviewing, the file in view is highlighted.
+ */
 export function Changes({ task, files }: { task: Task; files: DiffFile[] }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const reviewing = useReview((s) => s.view[task.id] === "review");
+  const inView = useReview((s) => s.inView);
+  const review = useReview((s) => reviewOf(s, task.id));
+  const showFile = useReview((s) => s.showFile);
 
   return (
     <section aria-label="Changes" className="flex min-h-0 flex-1 flex-col">
@@ -38,64 +44,52 @@ export function Changes({ task, files }: { task: Task; files: DiffFile[] }) {
           <ul>
             {[...files]
               .sort((a, b) => a.path.localeCompare(b.path))
-              .map((f) => (
-                <FileRow key={f.path} file={f} open={open === f.path} onToggle={() => setOpen(open === f.path ? null : f.path)} />
-              ))}
+              .map((f) => {
+                const [dir, name] = splitPath(f.path);
+                const status = STATUS[f.status];
+                const viewed = review.viewed.includes(f.path);
+                const comments = review.comments.filter((c) => c.path === f.path).length;
+                const current = reviewing && inView === f.path;
+                return (
+                  <li key={f.path}>
+                    <button
+                      type="button"
+                      onClick={() => showFile(task.id, f.path)}
+                      aria-current={current ? "true" : undefined}
+                      title={`Review ${f.path}`}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-1 text-left text-xs hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
+                        current && "bg-accent",
+                        viewed && !current && "opacity-60",
+                      )}
+                    >
+                      <span className="grid size-3 shrink-0 place-items-center text-state-review">
+                        {viewed && <Check className="size-3" aria-label="Viewed" />}
+                      </span>
+                      <span className="flex min-w-0 flex-1 font-mono">
+                        <span className="truncate text-muted-foreground">{dir}</span>
+                        <span className="shrink-0">{name}</span>
+                      </span>
+                      {comments > 0 && (
+                        <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
+                          <MessageSquare className="size-3" />
+                          {comments}
+                        </span>
+                      )}
+                      <span className="shrink-0 font-mono tabular-nums">
+                        {f.additions > 0 && <span className="text-diff-add">+{f.additions}</span>}{" "}
+                        {f.deletions > 0 && <span className="text-diff-del">−{f.deletions}</span>}
+                      </span>
+                      <span className={cn("w-3 shrink-0 text-center font-mono font-semibold", status.className)} title={status.label}>
+                        {status.letter}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
           </ul>
         )}
       </div>
     </section>
-  );
-}
-
-function FileRow({ file, open, onToggle }: { file: DiffFile; open: boolean; onToggle: () => void }) {
-  const [dir, name] = splitPath(file.path);
-  const status = STATUS[file.status];
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        title={file.path}
-        className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
-      >
-        <ChevronRight className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-        <span className="flex min-w-0 flex-1 font-mono">
-          <span className="truncate text-muted-foreground">{dir}</span>
-          <span className="shrink-0">{name}</span>
-        </span>
-        <span className="shrink-0 font-mono tabular-nums">
-          {file.additions > 0 && <span className="text-diff-add">+{file.additions}</span>}{" "}
-          {file.deletions > 0 && <span className="text-diff-del">−{file.deletions}</span>}
-        </span>
-        <span className={cn("w-3 shrink-0 text-center font-mono font-semibold", status.className)} title={status.label}>
-          {status.letter}
-        </span>
-      </button>
-      {open && <Patch patch={file.patch} />}
-    </li>
-  );
-}
-
-/** Plain unified view; the Review screen gets a proper diff viewer. */
-function Patch({ patch }: { patch: string }) {
-  const lines = patch.split("\n").filter((l) => !/^(diff --git|new file mode|--- |\+\+\+ |rename )/.test(l));
-  return (
-    <pre className="mx-3 my-1 overflow-x-auto rounded-md border bg-muted/40 py-1 font-mono text-[11px] leading-5">
-      {lines.map((l, i) => (
-        <div
-          key={i}
-          className={cn(
-            "px-2 whitespace-pre",
-            l.startsWith("+") && "bg-diff-add/10 text-diff-add",
-            l.startsWith("-") && "bg-diff-del/10 text-diff-del",
-            l.startsWith("@@") && "text-muted-foreground",
-          )}
-        >
-          {l || " "}
-        </div>
-      ))}
-    </pre>
   );
 }

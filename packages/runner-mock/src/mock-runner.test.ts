@@ -163,6 +163,23 @@ describe("MockRunner without autopilot", () => {
     expect((await runner.getDiff(task.id)).files).toHaveLength(1);
   });
 
+  it("acknowledges review comments by file before revising", async () => {
+    await runner.sendMessage(
+      "tsk_stripe_v22",
+      "Review comments (2):\n\nsrc/lib/payments.ts:5\n> apiVersion\nPin the older version.\n\napp/api/webhooks/stripe/route.ts:16\nKeep the cast.",
+    );
+    await vi.advanceTimersByTimeAsync(MIN);
+    const messages = await runner.getMessages("tsk_stripe_v22");
+    const ack = messages.find((m) => m.role === "agent" && m.text.startsWith("Going through your 2 review comments"));
+    expect(ack?.text).toContain("`src/lib/payments.ts`");
+    expect(ack?.text).toContain("`app/api/webhooks/stripe/route.ts`");
+    expect(messages.filter((m) => m.tool === "Read").map((m) => m.text)).toEqual([
+      "src/lib/payments.ts",
+      "app/api/webhooks/stripe/route.ts",
+    ]);
+    expect(await stateOf(runner, "tsk_stripe_v22")).toBe("ready_for_review");
+  });
+
   it("requesting changes sends a reviewed task back to working", async () => {
     await runner.sendMessage("tsk_dark_mode", "Default to System, store it in a cookie.");
     expect(await stateOf(runner, "tsk_dark_mode")).toBe("working");

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentKind } from "@solus/core";
+import type { AgentKind, MergeOptions, PROptions } from "@solus/core";
 import { getRunner, BASE_BRANCH, REPO } from "./runner";
 import { useSolus } from "./store";
 
@@ -25,25 +25,28 @@ export function sendMessage(id: string, text: string, agent?: AgentKind) {
   return attempt(() => getRunner().sendMessage(id, text, agent ? { agent } : {}));
 }
 
-export function mergeTask(id: string) {
-  const task = useSolus.getState().tasks[id];
-  if (!task) return;
-  return attempt(() =>
-    getRunner().merge(id, {
-      targetBranch: task.baseBranch,
-      commitMessage: task.title,
-      strategy: "squash",
-      deleteBranch: true,
-    }),
-  );
+const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Merges locally. Returns an error message for the dialog to show, or null. */
+export async function mergeTask(id: string, opts: MergeOptions): Promise<string | null> {
+  try {
+    await getRunner().merge(id, opts);
+    useSolus.getState().setNotice(`Merged into ${opts.targetBranch}.`);
+    return null;
+  } catch (err) {
+    return message(err);
+  }
 }
 
-export function openPullRequest(id: string) {
-  const task = useSolus.getState().tasks[id];
-  if (!task) return;
-  return attempt(() =>
-    getRunner().openPullRequest(id, { title: task.title, body: task.prompt, baseBranch: task.baseBranch }),
-  );
+/** Opens a pull request. Returns an error message for the dialog to show, or null. */
+export async function openPullRequest(id: string, opts: PROptions): Promise<string | null> {
+  try {
+    const { url } = await getRunner().openPullRequest(id, opts);
+    useSolus.getState().setNotice(`Opened ${url}`);
+    return null;
+  } catch (err) {
+    return message(err);
+  }
 }
 
 /** Creates a task from a prompt, starts it and opens its tab. */

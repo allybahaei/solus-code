@@ -1,14 +1,16 @@
 "use client";
 
-import { ArrowUpRight, GitBranch, GitMerge, GitPullRequest, Play, Square } from "lucide-react";
+import { ArrowUpRight, GitBranch, GitMerge, GitPullRequest, MessageSquare, Play, Square } from "lucide-react";
 import type { Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
+import { startTask, stopTask } from "@/lib/actions";
+import { reviewOf, useReview } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
-import { mergeTask, openPullRequest, startTask, stopTask } from "@/lib/actions";
+import { cn } from "@/lib/utils";
 
-/** Title, branch, state, and the one action that moves the task forward. */
+/** Title, branch, state, the Chat/Review switch, and the action that moves the task forward. */
 export function TaskHeader({ task }: { task: Task }) {
   const { changes } = task;
   const title = useSolus((s) => displayTitle(s, task));
@@ -36,13 +38,55 @@ export function TaskHeader({ task }: { task: Task }) {
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <ViewSwitch task={task} />
         <Actions task={task} />
       </div>
     </header>
   );
 }
 
+/** Chat | Review, on wide screens. Narrow screens use the Chat/Changes/Terminal tabs. */
+function ViewSwitch({ task }: { task: Task }) {
+  const view = useReview((s) => s.view[task.id] ?? "chat");
+  const setView = useReview((s) => s.setView);
+  const comments = useReview((s) => reviewOf(s, task.id).comments.length);
+  if (task.changes.files === 0) return null;
+  return (
+    <div role="tablist" aria-label="View" className="hidden rounded-md border p-0.5 text-xs lg:flex">
+      {(["chat", "review"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          role="tab"
+          aria-selected={view === v}
+          onClick={() => setView(task.id, v)}
+          title={v === "review" ? "Review the diff (R)" : "Back to the chat (Esc)"}
+          className={cn(
+            "rounded px-2.5 py-1 capitalize",
+            view === v ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {v}
+          {v === "review" && (
+            <span className="ml-1 inline-flex items-center gap-1 tabular-nums opacity-70">
+              {task.changes.files}
+              {comments > 0 && (
+                <>
+                  <span>·</span>
+                  <MessageSquare className="size-3" />
+                  {comments}
+                </>
+              )}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Actions({ task }: { task: Task }) {
+  const openMerge = useReview((s) => s.openMerge);
   switch (task.state) {
     case "idle":
       return (
@@ -61,14 +105,14 @@ function Actions({ task }: { task: Task }) {
     case "ready_for_review":
       return (
         <>
-          <Button size="sm" variant="outline" onClick={() => openPullRequest(task.id)} title="Open a pull request (P)">
+          <Button size="sm" variant="outline" onClick={() => openMerge(task.id, "pr")} title="Open a pull request (P)">
             <GitPullRequest />
             Open PR
           </Button>
           <Button
             size="sm"
-            onClick={() => mergeTask(task.id)}
-            title={`Squash-merge into ${task.baseBranch} (M)`}
+            onClick={() => openMerge(task.id, "merge")}
+            title={`Merge into ${task.baseBranch} (M)`}
             className="bg-state-review text-black hover:bg-state-review/85"
           >
             <GitMerge />

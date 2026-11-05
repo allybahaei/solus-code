@@ -38,7 +38,8 @@ export function TabBar() {
         <ChevronLeft />
       </button>
 
-      <div className="flex shrink-0 items-center gap-2 pr-3 pl-2 md:pl-4">
+      {/* The repo name gives way to the tabs on phones. */}
+      <div className="hidden shrink-0 items-center gap-2 pr-3 pl-2 md:flex md:pl-4">
         <AudioLines
           aria-label={anyWorking ? "Agents working" : "No agents working"}
           className={cn("size-4", anyWorking ? "animate-pulse text-state-review" : "text-muted-foreground")}

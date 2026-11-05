@@ -11,7 +11,10 @@ import { NewTaskDialog } from "@/components/new-task-dialog";
 import { Changes } from "@/components/side/changes";
 import { TerminalView } from "@/components/side/terminal";
 import { SEARCH_ID, Sidebar } from "@/components/sidebar";
-import { mergeTask, openPullRequest, startTask } from "@/lib/actions";
+import { MergeDialog } from "@/components/review/merge-dialog";
+import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/review-view";
+import { startTask } from "@/lib/actions";
+import { loadReviewPrefs, useReview } from "@/lib/review-store";
 import { useMediaQuery } from "@/lib/hooks";
 import { getRunner } from "@/lib/runner";
 import { connectRunner, useSolus, type CenterView } from "@/lib/store";
@@ -25,6 +28,7 @@ export function AppShell() {
   const rightPaneOpen = useSolus((s) => s.rightPaneOpen);
 
   useEffect(() => connectRunner(getRunner()), []);
+  useEffect(() => loadReviewPrefs(), []);
   useKeyboard();
 
   return (
@@ -43,6 +47,7 @@ export function AppShell() {
       </main>
       {wide && rightPaneOpen && <RightPane />}
       <NewTaskDialog />
+      <MergeDialog />
       <Notice />
     </div>
   );
@@ -56,6 +61,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
   const error = useSolus((s) => s.error);
   const view = useSolus((s) => s.centerView);
   const setView = useSolus((s) => s.setCenterView);
+  const reviewing = useReview((s) => (task ? s.view[task.id] === "review" : false));
 
   if (status === "error") {
     return <Empty>Couldn&apos;t reach the runner: {error}</Empty>;
@@ -88,13 +94,16 @@ function ActiveTask({ wide }: { wide: boolean }) {
           ))}
         </div>
       )}
-      {current === "chat" && (
-        <>
-          <Transcript task={task} messages={messages} />
-          <Composer key={task.id} task={task} />
-        </>
-      )}
-      {current === "changes" && <Changes task={task} files={files} />}
+      {current === "chat" &&
+        (wide && reviewing ? (
+          <ReviewView key={task.id} task={task} files={files} narrow={false} />
+        ) : (
+          <>
+            <Transcript task={task} messages={messages} />
+            <Composer key={task.id} task={task} />
+          </>
+        ))}
+      {current === "changes" && <ReviewView key={task.id} task={task} files={files} narrow />}
       {current === "terminal" && <TerminalView key={task.id} task={task} />}
     </>
   );
@@ -150,9 +159,10 @@ function Notice() {
 }
 
 /**
- * J/K or ↑/↓ move through workspaces, [ ] switch tabs, X closes a tab,
- * N new task, Enter focuses the reply box, S start, M merge, P open PR.
- * Ignored while typing.
+ * J/K or ↑/↓ move through workspaces (or files, while reviewing), [ ] switch
+ * tabs, X closes a tab, N new task, Enter focuses the reply box, S start,
+ * R review, V mark the file in view as viewed, M merge, P open PR, Esc back
+ * to the chat. Ignored while typing or while a dialog is open.
  */
 function useKeyboard() {
   useEffect(() => {
@@ -163,15 +173,46 @@ function useKeyboard() {
 
       const s = useSolus.getState();
       const task = s.activeId ? s.tasks[s.activeId] : undefined;
+      const r = useReview.getState();
+      const reviewing = !!task && (r.view[task.id] === "review" || s.centerView === "changes");
+
+      /** Scrolls the review to the next or previous file. */
+      const stepFile = (delta: 1 | -1) => {
+        if (!task) return;
+        const paths = sortFiles(s.diffs[task.id] ?? []).map((f) => f.path);
+        const i = r.inView ? paths.indexOf(r.inView) : -1;
+        const next = paths[Math.min(paths.length - 1, Math.max(0, i + delta))];
+        if (next) r.showFile(task.id, next);
+      };
+
       const handled = (() => {
         switch (e.key) {
           case "j":
           case "ArrowDown":
-            s.move(1);
+            if (reviewing) stepFile(1);
+            else s.move(1);
             return true;
           case "k":
           case "ArrowUp":
-            s.move(-1);
+            if (reviewing) stepFile(-1);
+            else s.move(-1);
+            return true;
+          case "r":
+            if (!task) return false;
+            if (window.matchMedia("(min-width: 1024px)").matches) r.setView(task.id, "review");
+            else s.setCenterView("changes");
+            return true;
+          case "v":
+            if (task && reviewing && r.inView) r.toggleViewed(task.id, r.inView);
+            return true;
+          case "Escape":
+            if (task && r.view[task.id] === "review") {
+              r.setView(task.id, "chat");
+              return true;
+            }
+            return false;
+          case "c":
+            if (task && reviewing) document.getElementById(REVIEW_SUMMARY_ID)?.focus();
             return true;
           case "]":
             s.cycleTab(1);
@@ -191,7 +232,8 @@ function useKeyboard() {
             return true;
           case "Enter":
             if (!task) return false;
-            if (s.centerView !== "chat" || s.showList) {
+            if (s.centerView !== "chat" || s.showList || r.view[task.id] === "review") {
+              r.setView(task.id, "chat");
               s.open(task.id);
               requestAnimationFrame(() => document.getElementById(COMPOSER_ID)?.focus());
             } else {
@@ -202,10 +244,10 @@ function useKeyboard() {
             if (task?.state === "idle") void startTask(task.id);
             return true;
           case "m":
-            if (task?.state === "ready_for_review") void mergeTask(task.id);
+            if (task?.state === "ready_for_review") r.openMerge(task.id, "merge");
             return true;
           case "p":
-            if (task?.state === "ready_for_review") void openPullRequest(task.id);
+            if (task?.state === "ready_for_review") r.openMerge(task.id, "pr");
             return true;
           default:
             return false;

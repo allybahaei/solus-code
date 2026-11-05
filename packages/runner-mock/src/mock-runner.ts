@@ -1,6 +1,7 @@
 import {
   assertTransition,
   diffStats,
+  type AgentKind,
   type AgentMessage,
   type CreateTaskInput,
   type Diff,
@@ -102,7 +103,7 @@ export class MockRunner implements Runner {
       repo: input.repo,
       branch: branchFor(input.title),
       baseBranch: input.baseBranch,
-      agent: "claude-code",
+      agent: input.agent ?? "claude-code",
       state: "idle",
       changes: { files: 0, additions: 0, deletions: 0 },
       createdAt: now,
@@ -122,11 +123,13 @@ export class MockRunner implements Runner {
     this.play(rec, rec.scenario?.run ?? genericRun(rec.task));
   }
 
-  async sendMessage(id: string, message: string): Promise<void> {
+  async sendMessage(id: string, message: string, opts: { agent?: AgentKind } = {}): Promise<void> {
     const rec = this.get(id);
     const { state } = rec.task;
     if (state === "idle") throw new Error(`Start task ${id} before messaging it.`);
     if (state === "merged") throw new Error(`Task ${id} is merged.`);
+    // The mock plays the same script whichever agent is chosen; it only records it.
+    if (opts.agent) rec.task.agent = opts.agent;
 
     this.addMessage(rec, "user", message);
     switch (state) {

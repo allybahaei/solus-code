@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { ArrowRight, House, Pin, PinOff, Plus, Search, X } from "lucide-react";
 import { STATE_LABELS, isAttention, type Task, type TaskState } from "@solus/core";
+import { AgentIcon } from "@/components/agent-picker";
 import { sidebarSections } from "@/lib/groups";
 import { ago } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
@@ -196,9 +197,10 @@ function WorkspaceRow({ task }: { task: Task }) {
           "hover:bg-accent/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           task.state === "needs_input" && "bg-state-needs-input-soft",
           task.state === "stuck" && "bg-state-stuck-soft",
-          active && "bg-accent",
           task.state === "merged" ? "text-muted-foreground" : unread || attention ? "text-foreground" : "text-foreground/75",
           (unread || attention) && "font-semibold",
+          // Selected: the clearest row in the list.
+          active && "bg-foreground/10 font-medium text-foreground ring-1 ring-foreground/15 hover:bg-foreground/10",
         )}
       >
         {BAR[task.state] && (
@@ -208,6 +210,7 @@ function WorkspaceRow({ task }: { task: Task }) {
           />
         )}
         <span className="sr-only">{STATE_LABELS[task.state]}:</span>
+        <AgentIcon agent={task.agent} className={cn("size-3.5", !active && "opacity-70 grayscale")} />
         <span className="min-w-0 flex-1 truncate">{task.title}</span>
         <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums group-hover:invisible">
           {now !== null ? ago(now - task.lastActivityAt) : ""}

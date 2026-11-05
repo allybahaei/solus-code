@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { ArrowUp, CircleAlert, MessageCircleQuestion, Play } from "lucide-react";
-import type { Task } from "@solus/core";
+import type { AgentKind, Task } from "@solus/core";
+import { AgentPicker } from "@/components/agent-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendMessage, startTask } from "@/lib/actions";
@@ -25,12 +26,14 @@ export function Composer({ task }: { task: Task }) {
   const text = drafts[task.id] ?? "";
   const setText = (v: string) => setDrafts((d) => ({ ...d, [task.id]: v }));
   const disabled = task.state === "merged";
+  // The agent for the next message. Composer is keyed by task, so this resets per task.
+  const [agent, setAgent] = useState<AgentKind>(task.agent);
 
   const send = () => {
     const message = text.trim();
     if (!message || disabled) return;
     setText("");
-    void sendMessage(task.id, message);
+    void sendMessage(task.id, message, agent);
   };
 
   return (
@@ -80,7 +83,7 @@ export function Composer({ task }: { task: Task }) {
               className="max-h-48 min-h-14 resize-none border-0 bg-transparent px-3.5 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
             />
             <div className="flex items-center justify-between px-2.5 pb-2.5">
-              <span className="pl-1 text-xs text-muted-foreground">Claude Code</span>
+              <AgentPicker value={agent} onChange={setAgent} disabled={disabled} />
               <Button size="icon-sm" onClick={send} disabled={disabled || !text.trim()} aria-label="Send">
                 <ArrowUp />
               </Button>

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { GitBranch } from "lucide-react";
+import type { AgentKind } from "@solus/core";
+import { AgentPicker } from "@/components/agent-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,10 +22,12 @@ export function NewTaskDialog() {
   const open = useSolus((s) => s.newTaskOpen);
   const setOpen = useSolus((s) => s.setNewTaskOpen);
   const [prompt, setPrompt] = useState("");
+  // Kept between tasks, so the last agent you picked stays the default.
+  const [agent, setAgent] = useState<AgentKind>("claude-code");
 
   const submit = () => {
     if (!prompt.trim()) return;
-    void createAndStart(prompt);
+    void createAndStart(prompt, agent);
     setPrompt("");
     setOpen(false);
   };
@@ -55,8 +59,9 @@ export function NewTaskDialog() {
           rows={5}
           className="resize-none"
         />
-        <DialogFooter className="items-center sm:justify-between">
-          <span className="hidden text-xs text-muted-foreground sm:inline">Enter to start · Shift+Enter for a new line</span>
+        <DialogFooter className="flex-row items-center justify-between sm:justify-between">
+          <AgentPicker value={agent} onChange={setAgent} />
+          <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">Enter to start</span>
           <Button onClick={submit} disabled={!prompt.trim()}>
             Start task
           </Button>

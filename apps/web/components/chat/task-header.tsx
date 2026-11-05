@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, GitBranch, GitMerge, GitPullRequest, Play, Square } from "lucide-react";
 import type { Task } from "@solus/core";
+import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
 import { mergeTask, openPullRequest, startTask, stopTask } from "@/lib/actions";
@@ -15,6 +16,10 @@ export function TaskHeader({ task }: { task: Task }) {
         <h1 className="truncate text-sm font-medium">{task.title}</h1>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <StateLabel state={task.state} />
+          <span className="inline-flex items-center gap-1.5">
+            <AgentIcon agent={task.agent} className="size-3.5" />
+            {AGENTS[task.agent].label}
+          </span>
           <span className="inline-flex items-center gap-1 font-mono">
             <GitBranch className="size-3" />
             {task.branch}

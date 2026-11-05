@@ -1,5 +1,6 @@
 "use client";
 
+import type { AgentKind } from "@solus/core";
 import { getRunner, BASE_BRANCH, REPO } from "./runner";
 import { useSolus } from "./store";
 
@@ -15,7 +16,14 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
 
 export const startTask = (id: string) => attempt(() => getRunner().startTask(id));
 export const stopTask = (id: string) => attempt(() => getRunner().stopTask(id));
-export const sendMessage = (id: string, text: string) => attempt(() => getRunner().sendMessage(id, text));
+export function sendMessage(id: string, text: string, agent?: AgentKind) {
+  const task = useSolus.getState().tasks[id];
+  if (task && agent && agent !== task.agent) {
+    // Optimistic: show the new agent right away.
+    useSolus.setState((s) => ({ tasks: { ...s.tasks, [id]: { ...task, agent } } }));
+  }
+  return attempt(() => getRunner().sendMessage(id, text, agent ? { agent } : {}));
+}
 
 export function mergeTask(id: string) {
   const task = useSolus.getState().tasks[id];
@@ -39,11 +47,11 @@ export function openPullRequest(id: string) {
 }
 
 /** Creates a task from a prompt, starts it and opens its tab. */
-export async function createAndStart(prompt: string) {
+export async function createAndStart(prompt: string, agent: AgentKind) {
   const firstLine = prompt.trim().split("\n")[0] ?? "";
   const title = firstLine.length > 60 ? `${firstLine.slice(0, 57).trimEnd()}…` : firstLine;
   const task = await attempt(() =>
-    getRunner().createTask({ repo: REPO, title, prompt: prompt.trim(), baseBranch: BASE_BRANCH }),
+    getRunner().createTask({ repo: REPO, title, prompt: prompt.trim(), baseBranch: BASE_BRANCH, agent }),
   );
   if (!task) return;
   useSolus.getState().open(task.id);

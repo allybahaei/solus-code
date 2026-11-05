@@ -1,7 +1,8 @@
 import { STATE_PRIORITY, type TaskState } from "./state";
 
-/** Which coding agent runs the task. Claude Code first; others later. */
-export type AgentKind = "claude-code";
+/** Which agent runs the task. */
+export const AGENT_KINDS = ["claude-code", "claude", "codex", "gemini"] as const;
+export type AgentKind = (typeof AGENT_KINDS)[number];
 
 /** Epoch milliseconds. Plain numbers so tasks serialize cleanly over the wire. */
 export type Timestamp = number;
@@ -54,6 +55,8 @@ export interface CreateTaskInput {
   title: string;
   prompt: string;
   baseBranch: string;
+  /** Defaults to claude-code. */
+  agent?: AgentKind;
 }
 
 /** Board order: attention states first, then most recent activity. */

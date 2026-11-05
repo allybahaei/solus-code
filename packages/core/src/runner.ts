@@ -1,6 +1,6 @@
 import type { Diff } from "./diff";
 import type { AgentMessage, RunnerEvent } from "./events";
-import type { CreateTaskInput, Task } from "./task";
+import type { AgentKind, CreateTaskInput, Task } from "./task";
 
 export type MergeStrategy = "merge" | "squash" | "rebase";
 
@@ -31,8 +31,11 @@ export interface Runner {
 
   createTask(input: CreateTaskInput): Promise<Task>;
   startTask(id: string): Promise<void>;
-  /** Reply to a question, nudge a stuck task, or request changes after review. */
-  sendMessage(id: string, message: string): Promise<void>;
+  /**
+   * Reply to a question, nudge a stuck task, or request changes after review.
+   * Passing `agent` hands the task to a different agent from this message on.
+   */
+  sendMessage(id: string, message: string, opts?: { agent?: AgentKind }): Promise<void>;
   stopTask(id: string): Promise<void>;
   getDiff(id: string): Promise<Diff>;
   merge(id: string, opts: MergeOptions): Promise<void>;

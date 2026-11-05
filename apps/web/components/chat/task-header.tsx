@@ -65,7 +65,12 @@ function Actions({ task }: { task: Task }) {
             <GitPullRequest />
             Open PR
           </Button>
-          <Button size="sm" onClick={() => mergeTask(task.id)} title={`Squash-merge into ${task.baseBranch} (M)`}>
+          <Button
+            size="sm"
+            onClick={() => mergeTask(task.id)}
+            title={`Squash-merge into ${task.baseBranch} (M)`}
+            className="bg-state-review text-black hover:bg-state-review/85"
+          >
             <GitMerge />
             Merge
           </Button>

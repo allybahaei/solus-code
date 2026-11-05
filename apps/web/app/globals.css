@@ -64,40 +64,46 @@
   color-scheme: light dark;
   --radius: 0.5rem;
 
-  /* Neutrals: slightly cool, low-contrast chrome so content leads. */
-  --background: light-dark(oklch(0.99 0.002 250), oklch(0.16 0.006 260));
-  --foreground: light-dark(oklch(0.2 0.01 260), oklch(0.94 0.004 260));
-  --card: light-dark(oklch(1 0 0), oklch(0.19 0.007 260));
+  /*
+   * Neutrals: warm greys (hue ~75) with very low chroma, so the dark theme
+   * reads as soft charcoal rather than blue-black. Chrome stays low contrast
+   * so agent output and diffs lead.
+   */
+  --background: light-dark(oklch(0.985 0.003 85), oklch(0.2 0.004 75));
+  --foreground: light-dark(oklch(0.22 0.006 75), oklch(0.93 0.006 85));
+  --card: light-dark(oklch(1 0 0), oklch(0.23 0.004 75));
   --card-foreground: var(--foreground);
-  --popover: var(--card);
+  --popover: light-dark(oklch(1 0 0), oklch(0.245 0.004 75));
   --popover-foreground: var(--foreground);
-  --primary: light-dark(oklch(0.24 0.012 260), oklch(0.93 0.004 260));
-  --primary-foreground: light-dark(oklch(0.98 0 0), oklch(0.18 0.006 260));
-  --secondary: light-dark(oklch(0.96 0.003 260), oklch(0.24 0.008 260));
+  --primary: light-dark(oklch(0.24 0.006 75), oklch(0.93 0.006 85));
+  --primary-foreground: light-dark(oklch(0.98 0.003 85), oklch(0.2 0.004 75));
+  --secondary: light-dark(oklch(0.955 0.004 85), oklch(0.265 0.005 75));
   --secondary-foreground: var(--foreground);
-  --muted: light-dark(oklch(0.965 0.003 260), oklch(0.22 0.007 260));
-  --muted-foreground: light-dark(oklch(0.52 0.01 260), oklch(0.66 0.01 260));
-  --accent: var(--secondary);
+  --muted: light-dark(oklch(0.96 0.004 85), oklch(0.24 0.004 75));
+  --muted-foreground: light-dark(oklch(0.52 0.008 75), oklch(0.68 0.008 80));
+  --accent: light-dark(oklch(0.945 0.005 85), oklch(0.265 0.005 75));
   --accent-foreground: var(--foreground);
-  --destructive: light-dark(oklch(0.56 0.2 25), oklch(0.68 0.18 25));
-  --border: light-dark(oklch(0.92 0.004 260), oklch(1 0 0 / 9%));
-  --input: light-dark(oklch(0.9 0.004 260), oklch(1 0 0 / 14%));
-  --ring: light-dark(oklch(0.62 0.12 255), oklch(0.68 0.12 255));
+  --destructive: light-dark(oklch(0.56 0.2 25), oklch(0.68 0.19 22));
+  --border: light-dark(oklch(0.91 0.005 85), oklch(1 0.01 85 / 7%));
+  --input: light-dark(oklch(0.89 0.005 85), oklch(1 0.01 85 / 12%));
+  --ring: light-dark(oklch(0.55 0.01 75), oklch(0.7 0.01 85));
 
-  --diff-add: light-dark(oklch(0.55 0.13 150), oklch(0.74 0.14 150));
-  --diff-del: light-dark(oklch(0.56 0.17 25), oklch(0.7 0.15 25));
+  /* Vivid green / red for diffs, as in the reference. */
+  --diff-add: light-dark(oklch(0.56 0.16 150), oklch(0.8 0.19 150));
+  --diff-del: light-dark(oklch(0.56 0.19 22), oklch(0.7 0.19 18));
 
   /*
-   * States. Calm by default: idle, working, review and merged are muted.
-   * Only needs_input and stuck are saturated, and only they get a soft fill.
+   * States. Calm by default: idle, working and merged are muted. Review is
+   * the clear green "ready" signal. needs_input and stuck stay the loudest
+   * and are the only ones with a soft fill.
    */
-  --state-idle: light-dark(oklch(0.62 0.01 260), oklch(0.58 0.01 260));
-  --state-working: light-dark(oklch(0.6 0.09 245), oklch(0.7 0.09 245));
+  --state-idle: light-dark(oklch(0.62 0.008 75), oklch(0.58 0.008 75));
+  --state-working: light-dark(oklch(0.6 0.09 245), oklch(0.72 0.08 240));
   --state-needs-input: light-dark(oklch(0.68 0.17 65), oklch(0.8 0.16 75));
-  --state-needs-input-soft: light-dark(oklch(0.97 0.04 80), oklch(0.8 0.16 75 / 10%));
-  --state-stuck: light-dark(oklch(0.58 0.21 25), oklch(0.7 0.19 25));
-  --state-stuck-soft: light-dark(oklch(0.97 0.025 25), oklch(0.7 0.19 25 / 10%));
-  --state-review: light-dark(oklch(0.58 0.1 155), oklch(0.72 0.1 155));
+  --state-needs-input-soft: light-dark(oklch(0.97 0.04 80), oklch(0.8 0.16 75 / 9%));
+  --state-stuck: light-dark(oklch(0.58 0.21 25), oklch(0.7 0.19 22));
+  --state-stuck-soft: light-dark(oklch(0.97 0.025 25), oklch(0.7 0.19 22 / 9%));
+  --state-review: light-dark(oklch(0.58 0.15 150), oklch(0.78 0.18 150));
   --state-merged: light-dark(oklch(0.58 0.06 300), oklch(0.66 0.06 300));
 }
 

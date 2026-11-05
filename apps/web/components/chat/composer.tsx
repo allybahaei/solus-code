@@ -79,8 +79,8 @@ export function Composer({ task }: { task: Task }) {
                 if (e.key === "Escape") e.currentTarget.blur();
               }}
               placeholder={PLACEHOLDER[task.state]}
-              rows={2}
-              className="max-h-48 min-h-14 resize-none border-0 bg-transparent px-3.5 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
+              rows={4}
+              className="max-h-80 min-h-28 resize-none border-0 bg-transparent px-3.5 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
             />
             <div className="flex items-center justify-between px-2.5 pb-2.5">
               <AgentPicker value={agent} onChange={setAgent} disabled={disabled} />

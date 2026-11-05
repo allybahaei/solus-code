@@ -28,7 +28,7 @@ export function TabBar() {
   const anyWorking = Object.values(tasks).some((t) => t.state === "working");
 
   return (
-    <div className="flex h-12 shrink-0 items-stretch gap-1 border-b pr-2">
+    <div className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2">
       <button
         type="button"
         className={cn(iconButton, "my-auto ml-1 md:hidden")}

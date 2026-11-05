@@ -31,7 +31,7 @@ export function AppShell() {
     <div className="flex h-dvh min-h-0 w-full overflow-hidden">
       <aside
         className={cn(
-          "min-h-0 w-full flex-col border-r bg-muted/30 md:flex md:w-72 md:shrink-0",
+          "min-h-0 w-full flex-col border-r bg-card md:flex md:w-72 md:shrink-0",
           showList ? "flex" : "hidden",
         )}
       >

@@ -41,12 +41,31 @@ Allowed transitions:
 
 `needs_input` and `stuck` are attention states: they sort to the top and get the strongest visual signal. `working` should feel alive but quiet.
 
-## Screens
+## Layout
 
-1. **Task board** — the home screen. All tasks for the repo, grouped or sorted by state (attention states first). Each row: title, state, agent, branch, files changed (+/−), last activity. New task is one keystroke away.
-2. **Workspace** — one task. Agent conversation/output on the left, terminal on the right (or tabbed on narrow screens). Input box to reply to the agent. State shown in the header.
-3. **Review** — the diff for one task. File list + side-by-side or unified diff, inline comments, "Request changes" (sends comments back to the agent → `working`) and "Merge" / "Open PR".
-4. **Merge / PR** — confirm target branch, commit message / PR title and body (pre-filled from the task), then do it. Can be a modal off the Review screen.
+One three-pane app shell. There is no separate board screen: the sidebar is the board.
+
+```
+┌──────────────┬────────────────────────────────┬───────────────────┐
+│ Workspaces   │ [tab][tab][tab]  +             │ Changes  12       │
+│              │ Title · branch · state  action │  file  +12 −3     │
+│ Needs you    │                                │  file  +40        │
+│ ● task       │  chat transcript               │                   │
+│ ● task       │  (agent output, tool calls,    ├───────────────────┤
+│ Active       │   user messages)               │ Terminal          │
+│ ◌ task       │                                │  $ pnpm test      │
+│ ○ task       │  ┌──────────────────────────┐  │  ✓ 612 passed     │
+│ ▸ Merged     │  │ reply / request changes  │  │                   │
+└──────────────┴──┴──────────────────────────┴──┴───────────────────┘
+```
+
+1. **Sidebar: workspaces** — every task for the repo, attention states first ("Needs you"), then active, then merged (collapsed). Each row: state, title, last activity; attention rows show a tint. New task is one keystroke away.
+2. **Center: chat** — tabs across the top for open workspaces. Below them a header (title, branch, state, the next action), the agent conversation with tool calls collapsed, and a composer to reply, nudge or request changes.
+3. **Right: changes and terminal** — files changed (+/−) on top, the workspace's terminal below.
+4. **Review** — the diff for one task, opened from the changes list: file list + side-by-side or unified diff, inline comments, "Request changes" (sends comments back to the agent → `working`) and "Merge" / "Open PR".
+5. **Merge / PR** — confirm target branch, commit message / PR title and body (pre-filled from the task), then do it. A modal off the header or Review.
+
+On narrow screens the sidebar becomes the first screen, and a task shows Chat / Changes / Terminal as tabs.
 
 ## Design principles
 

@@ -1,0 +1,122 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Theme: follows the OS by default. Put .light or .dark on <html> to force one.
+ * Every colour is a token below; components never use raw colours.
+ */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:not(:where(.light, .light *)) {
+      @slot;
+    }
+  }
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-diff-add: var(--diff-add);
+  --color-diff-del: var(--diff-del);
+
+  /* Task states. The -soft variants are row/badge backgrounds. */
+  --color-state-idle: var(--state-idle);
+  --color-state-working: var(--state-working);
+  --color-state-needs-input: var(--state-needs-input);
+  --color-state-needs-input-soft: var(--state-needs-input-soft);
+  --color-state-stuck: var(--state-stuck);
+  --color-state-stuck-soft: var(--state-stuck-soft);
+  --color-state-review: var(--state-review);
+  --color-state-merged: var(--state-merged);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  color-scheme: light dark;
+  --radius: 0.5rem;
+
+  /* Neutrals: slightly cool, low-contrast chrome so content leads. */
+  --background: light-dark(oklch(0.99 0.002 250), oklch(0.16 0.006 260));
+  --foreground: light-dark(oklch(0.2 0.01 260), oklch(0.94 0.004 260));
+  --card: light-dark(oklch(1 0 0), oklch(0.19 0.007 260));
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(oklch(0.24 0.012 260), oklch(0.93 0.004 260));
+  --primary-foreground: light-dark(oklch(0.98 0 0), oklch(0.18 0.006 260));
+  --secondary: light-dark(oklch(0.96 0.003 260), oklch(0.24 0.008 260));
+  --secondary-foreground: var(--foreground);
+  --muted: light-dark(oklch(0.965 0.003 260), oklch(0.22 0.007 260));
+  --muted-foreground: light-dark(oklch(0.52 0.01 260), oklch(0.66 0.01 260));
+  --accent: var(--secondary);
+  --accent-foreground: var(--foreground);
+  --destructive: light-dark(oklch(0.56 0.2 25), oklch(0.68 0.18 25));
+  --border: light-dark(oklch(0.92 0.004 260), oklch(1 0 0 / 9%));
+  --input: light-dark(oklch(0.9 0.004 260), oklch(1 0 0 / 14%));
+  --ring: light-dark(oklch(0.62 0.12 255), oklch(0.68 0.12 255));
+
+  --diff-add: light-dark(oklch(0.55 0.13 150), oklch(0.74 0.14 150));
+  --diff-del: light-dark(oklch(0.56 0.17 25), oklch(0.7 0.15 25));
+
+  /*
+   * States. Calm by default: idle, working, review and merged are muted.
+   * Only needs_input and stuck are saturated, and only they get a soft fill.
+   */
+  --state-idle: light-dark(oklch(0.62 0.01 260), oklch(0.58 0.01 260));
+  --state-working: light-dark(oklch(0.6 0.09 245), oklch(0.7 0.09 245));
+  --state-needs-input: light-dark(oklch(0.68 0.17 65), oklch(0.8 0.16 75));
+  --state-needs-input-soft: light-dark(oklch(0.97 0.04 80), oklch(0.8 0.16 75 / 10%));
+  --state-stuck: light-dark(oklch(0.58 0.21 25), oklch(0.7 0.19 25));
+  --state-stuck-soft: light-dark(oklch(0.97 0.025 25), oklch(0.7 0.19 25 / 10%));
+  --state-review: light-dark(oklch(0.58 0.1 155), oklch(0.72 0.1 155));
+  --state-merged: light-dark(oklch(0.58 0.06 300), oklch(0.66 0.06 300));
+}
+
+.light {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

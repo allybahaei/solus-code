@@ -158,6 +158,8 @@
   }
   html {
     @apply font-sans;
+    /* Sizes are in rem, so this scales the whole UI. */
+    font-size: 112.5%;
   }
   body {
     @apply bg-background text-foreground;

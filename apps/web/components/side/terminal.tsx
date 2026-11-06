@@ -54,7 +54,7 @@ export function TerminalView({ task }: { task: Task }) {
 
       const term = new Terminal({
         fontFamily: getComputedStyle(host).getPropertyValue("--font-geist-mono") || "monospace",
-        fontSize: 12,
+        fontSize: 13,
         lineHeight: 1.35,
         cursorBlink: true,
         convertEol: false,

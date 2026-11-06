@@ -114,7 +114,7 @@ function RightPane() {
   const task = useSolus((s) => (s.activeId ? s.tasks[s.activeId] : undefined));
   const files = useSolus((s) => (s.activeId ? s.diffs[s.activeId] : undefined)) ?? EMPTY;
   return (
-    <aside className="flex w-[380px] shrink-0 flex-col border-l xl:w-[440px]">
+    <aside className="flex w-[19rem] shrink-0 flex-col border-l xl:w-[21rem]">
       {task ? (
         <>
           <div className="flex min-h-0 flex-1 flex-col">

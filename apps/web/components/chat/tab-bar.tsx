@@ -44,7 +44,7 @@ export function TabBar() {
           aria-label={anyWorking ? "Agents working" : "No agents working"}
           className={cn("size-4", anyWorking ? "animate-pulse text-state-review" : "text-muted-foreground")}
         />
-        <span className="max-w-48 truncate text-[15px] font-semibold tracking-tight">{repo?.name}</span>
+        <span className="max-w-48 truncate text-[0.9375rem] font-semibold tracking-tight">{repo?.name}</span>
       </div>
 
       <div

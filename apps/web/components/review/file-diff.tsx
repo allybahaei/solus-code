@@ -104,7 +104,7 @@ export const FileDiff = memo(function FileDiff({
             diffViewMode={mode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
             diffViewTheme="dark"
             diffViewHighlight
-            diffViewFontSize={12}
+            diffViewFontSize={13}
             diffViewAddWidget={canComment}
             extendData={extendData}
             renderWidgetLine={({ side, lineNumber, onClose }) => (
@@ -146,7 +146,7 @@ function CommentThread({ taskId, comments, canEdit }: { taskId: string; comments
           />
         ) : (
           <div key={c.id} className="flex items-start gap-3 px-3 py-2.5 text-sm">
-            <span className="mt-0.5 rounded bg-state-needs-input/15 px-1.5 py-px text-[10px] font-medium tracking-wide text-state-needs-input uppercase">
+            <span className="mt-0.5 rounded bg-state-needs-input/15 px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-state-needs-input uppercase">
               Draft
             </span>
             <p className="min-w-0 flex-1 whitespace-pre-wrap">{c.text}</p>

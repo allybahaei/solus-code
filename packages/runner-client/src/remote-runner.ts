@@ -11,6 +11,7 @@ import type {
   RunnerMethod,
   RunnerSnapshot,
   ServerMessage,
+  SetupStatus,
   Task,
 } from "@solus/core";
 
@@ -74,6 +75,7 @@ export class RemoteRunner implements Runner {
   /* ---------------------------- Runner API ---------------------------- */
 
   snapshot = () => this.call<RunnerSnapshot>("snapshot");
+  checkSetup = () => this.call<SetupStatus>("checkSetup");
   listTasks = () => this.call<Task[]>("listTasks");
   getMessages = (id: string) => this.call<AgentMessage[]>("getMessages", id);
   createTask = (input: CreateTaskInput) => this.call<Task>("createTask", input);

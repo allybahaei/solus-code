@@ -14,6 +14,11 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
+export async function recheckSetup() {
+  const setup = await attempt(() => getRunner().checkSetup());
+  if (setup) useSolus.setState({ setup });
+}
+
 export const startTask = (id: string) => attempt(() => getRunner().startTask(id));
 export const answerApproval = (id: string, approvalId: string, allow: boolean) =>
   attempt(() => getRunner().answerApproval(id, approvalId, allow));

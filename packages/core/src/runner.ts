@@ -27,6 +27,27 @@ export interface RepoInfo {
   defaultBranch: string;
 }
 
+/** One thing Solus depends on. */
+export interface SetupCheck {
+  id: string;
+  label: string;
+  state: "ready" | "missing" | "signed_out" | "problem";
+  /** What was found, or why it matters. */
+  detail?: string;
+  /** A command or step that fixes it. */
+  fix?: string;
+}
+
+export interface AgentCheck extends SetupCheck {
+  agent: AgentKind;
+}
+
+/** Agents this runner can run, and the other tools it relies on. */
+export interface SetupStatus {
+  agents: AgentCheck[];
+  tools: SetupCheck[];
+}
+
 /** Everything a UI needs to draw, taken at one instant. */
 export interface RunnerSnapshot {
   repo: RepoInfo;
@@ -49,6 +70,8 @@ export interface Runner {
    * delivered after it, never both or neither.
    */
   snapshot(): Promise<RunnerSnapshot>;
+  /** Checks installs and logins. Costs no agent usage. */
+  checkSetup(): Promise<SetupStatus>;
   listTasks(): Promise<Task[]>;
   /** Full conversation so far, for opening a task that is already running. */
   getMessages(id: string): Promise<AgentMessage[]>;

@@ -12,6 +12,7 @@ import {
   type Runner,
   type RunnerEvent,
   type RunnerSnapshot,
+  type SetupStatus,
   type Task,
   type TaskState,
 } from "@solus/core";
@@ -113,6 +114,16 @@ export class MockRunner implements Runner {
       messages: byTask((r) => r.messages),
       diffs: byTask((r) => [...r.files.values()]),
       terminal: byTask((r) => r.terminal),
+    };
+  }
+
+  async checkSetup(): Promise<SetupStatus> {
+    return {
+      agents: [
+        { id: "claude-code", agent: "claude-code", label: "Claude Code", state: "ready" },
+        { id: "codex", agent: "codex", label: "Codex", state: "ready" },
+      ],
+      tools: [],
     };
   }
 

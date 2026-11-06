@@ -212,7 +212,15 @@ class ClaudeSession implements AgentSession {
       if (event.type === "error") {
         // Stopped before its first message was saved: nothing to resume.
         const lost = this.start.session && event.error.message.includes("No conversation found");
-        this.finish(lost ? { type: "session_lost" } : event);
+        const signedOut = /invalid api key|run \/login|not logged in|authentication/i.test(event.error.message);
+        const fix = "Run `claude auth login` in a terminal, then nudge this task.";
+        this.finish(
+          lost
+            ? { type: "session_lost" }
+            : signedOut
+              ? { type: "error", error: { ...event.error, detail: fix } }
+              : event,
+        );
         return;
       }
       this.emit(event);

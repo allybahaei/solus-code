@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { AGENT_KINDS, type AgentKind } from "@solus/core";
+import type { AgentCheck, AgentKind } from "@solus/core";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export const AGENTS: Record<AgentKind, { label: string; maker: string; description: string }> = {
@@ -17,6 +18,9 @@ export const AGENTS: Record<AgentKind, { label: string; maker: string; descripti
   codex: { label: "Codex", maker: "OpenAI", description: "Coding agent" },
   gemini: { label: "Gemini", maker: "Google", description: "Gemini CLI" },
 };
+
+/** Agents with no adapter don't appear; ones not set up appear disabled with their fix. */
+const hint = (check: AgentCheck) => (check.state === "ready" ? null : (check.fix ?? "Not available"));
 
 export function AgentIcon({ agent, className }: { agent: AgentKind; className?: string }) {
   return (
@@ -37,6 +41,7 @@ export function AgentPicker({
   disabled?: boolean;
   align?: "start" | "end";
 }) {
+  const checks = useSolus((s) => s.setup?.agents) ?? [];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -50,16 +55,21 @@ export function AgentPicker({
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align} side="top" className="w-64">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Agent</DropdownMenuLabel>
-        {AGENT_KINDS.map((agent) => (
-          <DropdownMenuItem key={agent} onSelect={() => onChange(agent)} className="gap-2.5 py-2">
-            <AgentIcon agent={agent} />
+        {checks.map((check) => (
+          <DropdownMenuItem
+            key={check.agent}
+            disabled={check.state !== "ready"}
+            onSelect={() => onChange(check.agent)}
+            className="gap-2.5 py-2"
+          >
+            <AgentIcon agent={check.agent} />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-sm">{AGENTS[agent].label}</span>
+              <span className="text-sm">{AGENTS[check.agent].label}</span>
               <span className="truncate text-xs text-muted-foreground">
-                {AGENTS[agent].maker} · {AGENTS[agent].description}
+                {hint(check) ?? `${AGENTS[check.agent].maker} · ${AGENTS[check.agent].description}`}
               </span>
             </span>
-            {agent === value && <Check className="size-4 text-foreground" />}
+            {check.agent === value && <Check className="size-4 text-foreground" />}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

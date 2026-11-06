@@ -54,6 +54,10 @@ if (prompt.includes("[fail]")) {
   out({ type: "turn.failed", error: { message: "Your login expired." } });
   process.exit(1);
 }
+if (prompt.includes("[expired]")) {
+  out({ type: "turn.failed", error: { message: "Your refresh token was already used. Please log out and sign in again." } });
+  process.exit(1);
+}
 if (prompt.includes("[hang]")) await new Promise(() => setInterval(() => {}, 1000));
 if (prompt.includes("[slow]")) await new Promise((r) => setTimeout(r, 300));
 if (prompt.includes("[ask]")) await askThroughBridge("Which one?");

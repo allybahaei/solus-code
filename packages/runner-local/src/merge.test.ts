@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 async function open(gh?: string) {
-  runner = await LocalRunner.open({ repoPath: repo, home, adapterFor: () => new FakeAgent(1), ...(gh ? { gh } : {}) });
+  runner = await LocalRunner.open({ repoPath: repo, home, adapterFor: () => new FakeAgent(1), ...(gh ? { commands: { gh } } : {}) });
   return runner;
 }
 

@@ -9,6 +9,7 @@ import type { Runner } from "./runner";
 /** Runner methods callable over the wire. Anything else is refused. */
 export const RUNNER_METHODS = [
   "snapshot",
+  "checkSetup",
   "listTasks",
   "getMessages",
   "createTask",

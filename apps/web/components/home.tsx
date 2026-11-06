@@ -2,6 +2,7 @@
 
 import { isAttention, type Task } from "@solus/core";
 import { StateLabel } from "@/components/state-dot";
+import { recheckSetup } from "@/lib/actions";
 import { sidebarSections } from "@/lib/groups";
 import { useSolus } from "@/lib/store";
 
@@ -29,6 +30,8 @@ export function Home() {
           {working} working · {ready.length} ready for review
         </p>
 
+        <SetupNotice />
+
         <List title="Needs you" tasks={needsYou} onOpen={open} />
         <List title="Ready for review" tasks={ready} onOpen={open} />
 
@@ -41,6 +44,45 @@ export function Home() {
         </button>
       </div>
     </div>
+  );
+}
+
+const STATE_TEXT = { missing: "Not installed", signed_out: "Not signed in", problem: "Needs attention", ready: "Ready" };
+
+/** Shown only when something isn't ready, with the command that fixes it. */
+function SetupNotice() {
+  const setup = useSolus((s) => s.setup);
+  if (!setup) return null;
+  const checks = [...setup.agents, ...setup.tools];
+  const problems = checks.filter((c) => c.state !== "ready");
+  if (problems.length === 0) return null;
+  const noAgent = setup.agents.every((a) => a.state !== "ready");
+
+  return (
+    <section className="mt-8" aria-label="Setup">
+      <h2 className="mb-2 text-xs text-muted-foreground">
+        {noAgent ? "Set up an agent to start" : "Setup"}
+      </h2>
+      <ul className="divide-y rounded-lg border">
+        {problems.map((c) => (
+          <li key={c.id} className="px-4 py-3 text-sm">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-medium">{c.label}</span>
+              <span className="text-xs text-state-needs-input">{STATE_TEXT[c.state]}</span>
+            </div>
+            {c.detail && <p className="mt-0.5 text-xs text-muted-foreground">{c.detail}</p>}
+            {c.fix && <code className="mt-1.5 block font-mono text-xs break-all">{c.fix}</code>}
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => void recheckSetup()}
+        className="mt-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        Check again
+      </button>
+    </section>
   );
 }
 

@@ -23,12 +23,15 @@ export function NewTaskDialog() {
   const setOpen = useSolus((s) => s.setNewTaskOpen);
   const [prompt, setPrompt] = useState("");
   // Kept between tasks, so the last agent you picked stays the default.
-  const [agent, setAgent] = useState<AgentKind>("claude-code");
+  const [chosen, setAgent] = useState<AgentKind | null>(null);
+  const checks = useSolus((s) => s.setup?.agents);
+  const ready = (checks ?? []).filter((a) => a.state === "ready").map((a) => a.agent);
+  const agent = chosen && ready.includes(chosen) ? chosen : (ready[0] ?? null);
 
   const connected = useSolus((s) => s.connected);
 
   const submit = () => {
-    if (!prompt.trim() || !connected) return;
+    if (!prompt.trim() || !connected || !agent) return;
     void createAndStart(prompt, agent);
     setPrompt("");
     setOpen(false);
@@ -62,9 +65,13 @@ export function NewTaskDialog() {
           className="resize-none"
         />
         <DialogFooter className="flex-row items-center justify-between sm:justify-between">
-          <AgentPicker value={agent} onChange={setAgent} />
+          {agent ? (
+            <AgentPicker value={agent} onChange={setAgent} />
+          ) : (
+            <span className="text-xs text-muted-foreground">No agent is ready. See Home.</span>
+          )}
           <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">Enter to start</span>
-          <Button onClick={submit} disabled={!prompt.trim() || !connected}>
+          <Button onClick={submit} disabled={!prompt.trim() || !connected || !agent}>
             Start task
           </Button>
         </DialogFooter>

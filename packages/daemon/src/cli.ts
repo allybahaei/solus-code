@@ -24,10 +24,15 @@ delete process.env.NEXT_PUBLIC_SOLUS_TOKEN;
 
 const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude: "Claude", codex: "Codex", gemini: "Gemini" };
 
+/** For installs that aren't on PATH. */
+const claude = process.env.SOLUS_CLAUDE_BIN;
+const codex = process.env.SOLUS_CODEX_BIN;
+const gh = process.env.SOLUS_GH_BIN;
+
 function adapterFor(agent: AgentKind): AgentAdapter {
   if (values.fake) return new FakeAgent();
-  if (agent === "claude-code") return new ClaudeCodeAdapter();
-  if (agent === "codex") return new CodexAdapter();
+  if (agent === "claude-code") return new ClaudeCodeAdapter(claude ? { command: claude } : {});
+  if (agent === "codex") return new CodexAdapter(codex ? { command: codex } : {});
   return new UnavailableAgent(LABELS[agent]);
 }
 
@@ -36,6 +41,7 @@ try {
     ? await LocalRunner.open({
         repoPath: values.repo,
         adapterFor,
+        commands: { ...(claude ? { claude } : {}), ...(codex ? { codex } : {}), ...(gh ? { gh } : {}) },
         ...(process.env.SOLUS_HOME ? { home: process.env.SOLUS_HOME } : {}),
       })
     : createMockRunner({ autopilot: values.autopilot, speed: Number(values.speed) || 1 });

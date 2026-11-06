@@ -108,6 +108,14 @@ describe("CodexAdapter", () => {
     expect(events.filter((e) => e.type === "error")).toEqual([{ type: "error", error: { message: "Your login expired." } }]);
   });
 
+  it("says how to fix an expired login", async () => {
+    run("Go [expired]");
+    await saw("error");
+    expect(events.find((e) => e.type === "error")).toMatchObject({
+      error: { detail: expect.stringContaining("codex login") },
+    });
+  });
+
   it("reports a crash with its stderr", async () => {
     run("Go [crash]");
     await saw("error");

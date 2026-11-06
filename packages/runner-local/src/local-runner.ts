@@ -17,6 +17,7 @@ import {
   type Runner,
   type RunnerEvent,
   type RunnerSnapshot,
+  type SetupStatus,
   type Task,
   type TaskError,
   type TaskState,
@@ -25,6 +26,7 @@ import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { readDiff } from "./diff";
 import { readRepo } from "./git";
 import { commitAll, createPullRequest, mergeBranch, removeWorkspace } from "./merge";
+import { checkSetup, type SetupCommands } from "./setup";
 import { WorkspaceShell, type ShellSize } from "./shell";
 import { TaskStore, type StoredTask } from "./store";
 import { SetupError, copyFiles, createWorktree, readRepoConfig, runSetup, slugify, uniqueBranch } from "./workspace";
@@ -35,8 +37,8 @@ export interface LocalRunnerOptions {
   adapterFor: (agent: AgentKind) => AgentAdapter;
   /** Where saved state and worktrees live. Defaults to ~/.solus. */
   home?: string;
-  /** The gh executable. Tests point this at a stand-in. */
-  gh?: string;
+  /** Executables to use instead of the ones on PATH. */
+  commands?: SetupCommands;
 }
 
 interface Rec extends StoredTask {
@@ -82,11 +84,11 @@ export class LocalRunner implements Runner {
     private readonly store: TaskStore,
     private readonly worktrees: string,
     private readonly adapterFor: (agent: AgentKind) => AgentAdapter,
-    private readonly gh: string | undefined,
+    private readonly commands: SetupCommands,
   ) {}
 
   /** Opens a repo, restoring its saved tasks. Rejects if it isn't usable. */
-  static async open({ repoPath, adapterFor, home, gh }: LocalRunnerOptions): Promise<LocalRunner> {
+  static async open({ repoPath, adapterFor, home, commands = {} }: LocalRunnerOptions): Promise<LocalRunner> {
     const repo = await readRepo(repoPath);
     const root = repo.path as string;
     const dir = home ?? join(homedir(), ".solus");
@@ -96,7 +98,7 @@ export class LocalRunner implements Runner {
       new TaskStore(join(dir, "repos", key)),
       join(dir, "worktrees", key),
       adapterFor,
-      gh,
+      commands,
     );
     await runner.restore();
     return runner;
@@ -126,6 +128,10 @@ export class LocalRunner implements Runner {
       diffs: byTask((r) => r.files),
       terminal: byTask((r) => r.terminal),
     };
+  }
+
+  checkSetup(): Promise<SetupStatus> {
+    return checkSetup(this.commands);
   }
 
   async listTasks(): Promise<Task[]> {
@@ -260,7 +266,7 @@ export class LocalRunner implements Runner {
         title: opts.title,
         body: opts.body,
         draft: opts.draft ?? false,
-        ...(this.gh ? { gh: this.gh } : {}),
+        ...(this.commands.gh ? { gh: this.commands.gh } : {}),
       });
       this.term(rec, `\x1b[2mOpened ${pr.url}\x1b[0m\r\n`);
       this.endSession(rec);

@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { AgentMessage, DiffFile, RepoInfo, Runner, RunnerSnapshot, Task } from "@solus/core";
+import type { AgentMessage, DiffFile, RepoInfo, Runner, RunnerSnapshot, SetupStatus, Task } from "@solus/core";
 import { navOrder } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
@@ -13,6 +13,7 @@ interface SolusState {
   /** False while the connection to the daemon is down. */
   connected: boolean;
   repo: RepoInfo | null;
+  setup: SetupStatus | null;
   tasks: Record<string, Task>;
   messages: Record<string, AgentMessage[]>;
   diffs: Record<string, DiffFile[]>;
@@ -102,6 +103,7 @@ export const useSolus = create<SolusState>()((set, get) => ({
   error: null,
   connected: true,
   repo: null,
+  setup: null,
   tasks: {},
   messages: {},
   diffs: {},
@@ -230,6 +232,8 @@ export function connectRunner(runner: Runner, connection?: ConnectionSource): ()
     runner
       .snapshot()
       .then(applySnapshot)
+      .then(() => runner.checkSetup())
+      .then((setup) => set({ setup }))
       .catch((err: unknown) => {
         set({ status: "error", error: err instanceof Error ? err.message : String(err) });
       });

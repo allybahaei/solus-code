@@ -120,7 +120,10 @@ class CodexSession implements AgentSession {
       for (const event of stream.push(line)) {
         if (event.type === "session") this.thread = event.id;
         if (event.type === "error") {
-          this.finish(event);
+          // `codex login status` can't see an expired token, so it shows up here.
+          const expired = /refresh token|sign in again|log in again|logged in/i.test(event.error.message);
+          const fix = "Run `codex logout`, then `codex login`, in a terminal, then nudge this task.";
+          this.finish(expired ? { type: "error", error: { ...event.error, detail: fix } } : event);
           return;
         }
         this.emit(event);

@@ -10,7 +10,9 @@ import {
   type CreateTaskInput,
   type Diff,
   type DiffFile,
+  type MergeOptions,
   type MessageRole,
+  type PROptions,
   type RepoInfo,
   type Runner,
   type RunnerEvent,
@@ -22,6 +24,7 @@ import {
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { readDiff } from "./diff";
 import { readRepo } from "./git";
+import { commitAll, createPullRequest, mergeBranch, removeWorkspace } from "./merge";
 import { TaskStore, type StoredTask } from "./store";
 import { SetupError, copyFiles, createWorktree, readRepoConfig, runSetup, slugify, uniqueBranch } from "./workspace";
 
@@ -31,6 +34,8 @@ export interface LocalRunnerOptions {
   adapterFor: (agent: AgentKind) => AgentAdapter;
   /** Where saved state and worktrees live. Defaults to ~/.solus. */
   home?: string;
+  /** The gh executable. Tests point this at a stand-in. */
+  gh?: string;
 }
 
 interface Rec extends StoredTask {
@@ -62,16 +67,19 @@ export class LocalRunner implements Runner {
   private readonly records = new Map<string, Rec>();
   private readonly listeners = new Set<(event: RunnerEvent) => void>();
   private nextMessage = 1;
+  /** Merges run one at a time, since they move shared branches. */
+  private merges: Promise<unknown> = Promise.resolve();
 
   private constructor(
     private readonly repo: RepoInfo & { path: string },
     private readonly store: TaskStore,
     private readonly worktrees: string,
     private readonly adapterFor: (agent: AgentKind) => AgentAdapter,
+    private readonly gh: string | undefined,
   ) {}
 
   /** Opens a repo, restoring its saved tasks. Rejects if it isn't usable. */
-  static async open({ repoPath, adapterFor, home }: LocalRunnerOptions): Promise<LocalRunner> {
+  static async open({ repoPath, adapterFor, home, gh }: LocalRunnerOptions): Promise<LocalRunner> {
     const repo = await readRepo(repoPath);
     const root = repo.path as string;
     const dir = home ?? join(homedir(), ".solus");
@@ -81,6 +89,7 @@ export class LocalRunner implements Runner {
       new TaskStore(join(dir, "repos", key)),
       join(dir, "worktrees", key),
       adapterFor,
+      gh,
     );
     await runner.restore();
     return runner;
@@ -197,14 +206,47 @@ export class LocalRunner implements Runner {
     };
   }
 
-  merge(id: string): Promise<void> {
-    this.get(id);
-    return Promise.reject(new Error("Merging isn't connected to real repositories yet."));
+  merge(id: string, opts: MergeOptions): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      const worktree = this.readyWorktree(rec, "merge");
+      await commitAll(worktree, opts.commitMessage, this.copiedFiles());
+      const commit = await mergeBranch({
+        root: this.repo.path,
+        worktree,
+        branch: rec.task.branch,
+        target: opts.targetBranch,
+        message: opts.commitMessage,
+        strategy: opts.strategy,
+      });
+      this.term(rec, `\x1b[2mMerged into ${opts.targetBranch} as ${commit.slice(0, 8)} (${opts.strategy})\x1b[0m\r\n`);
+      this.endSession(rec);
+      this.store.saveDiff(rec.task.id, rec.files);
+      this.setState(rec, "merged", { mergedInto: opts.targetBranch });
+      if (opts.deleteBranch) await this.cleanUp(rec, worktree);
+    });
   }
 
-  openPullRequest(id: string): Promise<{ url: string }> {
-    this.get(id);
-    return Promise.reject(new Error("Pull requests aren't connected to real repositories yet."));
+  openPullRequest(id: string, opts: PROptions): Promise<{ url: string }> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      const worktree = this.readyWorktree(rec, "open a pull request for");
+      await commitAll(worktree, opts.title, this.copiedFiles());
+      const pr = await createPullRequest({
+        worktree,
+        branch: rec.task.branch,
+        base: opts.baseBranch,
+        title: opts.title,
+        body: opts.body,
+        draft: opts.draft ?? false,
+        ...(this.gh ? { gh: this.gh } : {}),
+      });
+      this.term(rec, `\x1b[2mOpened ${pr.url}\x1b[0m\r\n`);
+      this.endSession(rec);
+      this.store.saveDiff(rec.task.id, rec.files);
+      this.setState(rec, "merged", { pullRequest: pr });
+      return { url: pr.url };
+    });
   }
 
   subscribe(listener: (event: RunnerEvent) => void): () => void {
@@ -213,6 +255,47 @@ export class LocalRunner implements Runner {
   }
 
   /* ----------------------------- internals ---------------------------- */
+
+  private oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.merges.then(work, work);
+    this.merges = run.catch(() => {});
+    return run;
+  }
+
+  private readyWorktree(rec: Rec, action: string): string {
+    if (rec.task.state !== "ready_for_review") {
+      throw new Error(`Can't ${action} a task while it is ${rec.task.state}.`);
+    }
+    if (!rec.worktree || !existsSync(rec.worktree)) throw new Error("This task's worktree is gone.");
+    return rec.worktree;
+  }
+
+  private endSession(rec: Rec) {
+    rec.launch++;
+    rec.session?.stop();
+    delete rec.session;
+  }
+
+  /** The merge has already happened, so a failed clean-up is only worth a note. */
+  private async cleanUp(rec: Rec, worktree: string) {
+    try {
+      await removeWorkspace(this.repo.path, worktree, rec.task.branch);
+      delete rec.worktree;
+      this.save();
+      this.term(rec, `\x1b[2mRemoved the worktree and ${rec.task.branch}\x1b[0m\r\n`);
+    } catch (err) {
+      this.term(rec, `\x1b[33mCouldn't clean up: ${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`);
+    }
+  }
+
+  /** Files Solus copies into worktrees. They aren't the agent's work. */
+  private copiedFiles(): string[] {
+    try {
+      return readRepoConfig(this.repo.path).copy ?? [];
+    } catch {
+      return [];
+    }
+  }
 
   private repoInfo(): RepoInfo {
     return { name: this.repo.name, path: this.repo.path, defaultBranch: this.repo.defaultBranch };
@@ -236,12 +319,13 @@ export class LocalRunner implements Runner {
       }
       if (rec.worktree && existsSync(rec.worktree)) {
         try {
-          rec.files = await readDiff(rec.worktree, rec.task.baseBranch);
+          rec.files = await readDiff(rec.worktree, rec.task.baseBranch, this.copiedFiles());
           rec.task.changes = diffStats(rec.files);
         } catch {
           // The saved numbers stand. The next refresh will try again.
         }
       }
+      if (rec.task.state === "merged") rec.files = this.store.loadDiff(rec.task.id);
       this.records.set(rec.task.id, rec);
     }
     this.save();
@@ -278,7 +362,11 @@ export class LocalRunner implements Runner {
     return (rec.task.lastActivityAt = Date.now());
   }
 
-  private setState(rec: Rec, to: TaskState, extra: Pick<Partial<Task>, "question" | "error" | "approval"> = {}) {
+  private setState(
+    rec: Rec,
+    to: TaskState,
+    extra: Pick<Partial<Task>, "question" | "error" | "approval" | "pullRequest" | "mergedInto"> = {},
+  ) {
     const from = rec.task.state;
     assertTransition(from, to);
     rec.task.state = to;
@@ -318,7 +406,7 @@ export class LocalRunner implements Runner {
 
   private async refreshDiff(rec: Rec) {
     if (!rec.worktree) return;
-    rec.files = await readDiff(rec.worktree, rec.task.baseBranch);
+    rec.files = await readDiff(rec.worktree, rec.task.baseBranch, this.copiedFiles());
     rec.task.changes = diffStats(rec.files);
     const at = this.touch(rec);
     this.save();

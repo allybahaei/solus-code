@@ -143,11 +143,6 @@ describe("running a task", () => {
     expect((await r.getDiff(t.id)).files.map((f) => f.path)).toContain("notes/second-pass.md");
   });
 
-  it("says merging isn't connected yet instead of pretending", async () => {
-    const r = await open();
-    const t = await newTask(r, "Done");
-    await expect(r.merge(t.id)).rejects.toThrow(/isn't connected/);
-  });
 });
 
 describe("setup from solus.json", () => {

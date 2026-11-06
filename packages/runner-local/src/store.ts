@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentMessage, Task } from "@solus/core";
+import type { AgentMessage, DiffFile, Task } from "@solus/core";
 
 /** A task plus what only the runner needs to know about it. */
 export interface StoredTask {
@@ -36,13 +36,16 @@ export class TaskStore {
   private readonly tasksFile: string;
   private readonly messagesDir: string;
   private readonly terminalDir: string;
+  private readonly diffsDir: string;
 
   constructor(dir: string) {
     this.tasksFile = join(dir, "tasks.json");
     this.messagesDir = join(dir, "messages");
     this.terminalDir = join(dir, "terminal");
+    this.diffsDir = join(dir, "diffs");
     mkdirSync(this.messagesDir, { recursive: true });
     mkdirSync(this.terminalDir, { recursive: true });
+    mkdirSync(this.diffsDir, { recursive: true });
   }
 
   loadTasks(): StoredTask[] {
@@ -62,6 +65,16 @@ export class TaskStore {
 
   appendMessage(message: AgentMessage): void {
     appendFileSync(join(this.messagesDir, `${message.taskId}.jsonl`), JSON.stringify(message) + "\n");
+  }
+
+  /** Keeps a diff whose worktree is about to go, for read-only review. */
+  saveDiff(id: string, files: DiffFile[]): void {
+    writeFileSync(join(this.diffsDir, `${id}.json`), JSON.stringify(files));
+  }
+
+  loadDiff(id: string): DiffFile[] {
+    const path = join(this.diffsDir, `${id}.json`);
+    return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as DiffFile[]) : [];
   }
 
   loadTerminal(id: string): string[] {

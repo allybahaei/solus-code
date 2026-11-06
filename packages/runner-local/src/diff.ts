@@ -1,5 +1,6 @@
 import type { DiffFile, DiffFileStatus } from "@solus/core";
 import { git } from "./git";
+import { excludePaths } from "./merge";
 
 const stripPrefix = (path: string) => path.replace(/\t$/, "").replace(/^[ab]\//, "");
 
@@ -46,11 +47,12 @@ const DIFF_ARGS = ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext
 /**
  * Everything the task has changed: commits and uncommitted edits compared with
  * where the branch left the base, plus new files git doesn't track yet.
+ * `exclude` leaves out files Solus copied in, which aren't the agent's work.
  */
-export async function readDiff(worktree: string, baseBranch: string): Promise<DiffFile[]> {
+export async function readDiff(worktree: string, baseBranch: string, exclude: readonly string[] = []): Promise<DiffFile[]> {
   const base = (await git(worktree, ["merge-base", baseBranch, "HEAD"])).trim();
   const tracked = await git(worktree, [...DIFF_ARGS, "-M", base]);
-  const untracked = (await git(worktree, ["ls-files", "--others", "--exclude-standard", "-z"]))
+  const untracked = (await git(worktree, ["ls-files", "--others", "--exclude-standard", "-z", "--", ".", ...excludePaths(exclude)]))
     .split("\0")
     .filter(Boolean);
 

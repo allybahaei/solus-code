@@ -17,6 +17,7 @@ export const RUNNER_METHODS = [
   "sendMessage",
   "answerApproval",
   "stopTask",
+  "deleteTask",
   "writeTerminal",
   "resizeTerminal",
   "getDiff",

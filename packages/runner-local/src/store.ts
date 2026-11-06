@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentMessage, DiffFile, Task } from "@solus/core";
 
@@ -12,6 +12,15 @@ export interface StoredTask {
   /** The agent's own session id, once it has run, for resuming. */
   agentSession?: string;
 }
+
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0); // Signal 0 only checks the process exists.
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
 
 /** Reads a JSONL file, skipping a last line left half-written by a crash. */
 function readLines<T>(path: string): T[] {
@@ -37,8 +46,10 @@ export class TaskStore {
   private readonly messagesDir: string;
   private readonly terminalDir: string;
   private readonly diffsDir: string;
+  private readonly lockFile: string;
 
   constructor(dir: string) {
+    this.lockFile = join(dir, "lock");
     this.tasksFile = join(dir, "tasks.json");
     this.messagesDir = join(dir, "messages");
     this.terminalDir = join(dir, "terminal");
@@ -46,6 +57,37 @@ export class TaskStore {
     mkdirSync(this.messagesDir, { recursive: true });
     mkdirSync(this.terminalDir, { recursive: true });
     mkdirSync(this.diffsDir, { recursive: true });
+  }
+
+  /**
+   * Claims this repo's saved state. Two Solus processes on one repo would
+   * overwrite each other. A lock left by a crash is taken over.
+   */
+  lock(): void {
+    try {
+      writeFileSync(this.lockFile, String(process.pid), { flag: "wx" });
+    } catch {
+      const holder = Number(readFileSync(this.lockFile, "utf8"));
+      if (holder && isRunning(holder)) {
+        throw new Error(`Solus is already running on this repo (process ${holder}). Stop it first, or use that one.`);
+      }
+      writeFileSync(this.lockFile, String(process.pid));
+    }
+  }
+
+  unlock(): void {
+    rmSync(this.lockFile, { force: true });
+  }
+
+  /** Removes everything saved for a task. */
+  forget(id: string): void {
+    for (const file of [
+      join(this.messagesDir, `${id}.jsonl`),
+      join(this.terminalDir, `${id}.jsonl`),
+      join(this.diffsDir, `${id}.json`),
+    ]) {
+      rmSync(file, { force: true });
+    }
   }
 
   loadTasks(): StoredTask[] {

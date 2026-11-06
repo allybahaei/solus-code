@@ -85,6 +85,7 @@ export class RemoteRunner implements Runner {
   answerApproval = (id: string, approvalId: string, allow: boolean) =>
     this.run("answerApproval", id, approvalId, allow);
   stopTask = (id: string) => this.run("stopTask", id);
+  deleteTask = (id: string) => this.run("deleteTask", id);
   writeTerminal = (id: string, data: string) => this.run("writeTerminal", id, data);
   resizeTerminal = (id: string, cols: number, rows: number) => this.run("resizeTerminal", id, cols, rows);
   getDiff = (id: string) => this.call<Diff>("getDiff", id);

@@ -252,6 +252,17 @@ export function connectRunner(runner: Runner, connection?: ConnectionSource): ()
         set((s) => ({ tasks: { ...s.tasks, [e.taskId]: e.task } }));
         break;
 
+      case "task.deleted":
+        set((s) => {
+          const tasks = { ...s.tasks };
+          delete tasks[e.taskId];
+          const i = s.openTabs.indexOf(e.taskId);
+          const openTabs = s.openTabs.filter((id) => id !== e.taskId);
+          const activeId = s.activeId === e.taskId ? (openTabs[Math.min(i, openTabs.length - 1)] ?? null) : s.activeId;
+          return { tasks, openTabs, activeId, closedTabs: s.closedTabs.filter((id) => id !== e.taskId) };
+        });
+        break;
+
       case "agent.output":
         set((s) => {
           const list = s.messages[e.taskId] ?? [];

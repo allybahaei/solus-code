@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { promisify } from "node:util";
 import type { MergeStrategy } from "@solus/core";
 import { branchExists, git } from "./git";
@@ -104,11 +104,14 @@ export async function mergeBranch({ root, worktree, branch, target, message, str
   return commit;
 }
 
-/** Removes a task's worktree and branch. Throws if git refuses. */
-export async function removeWorkspace(root: string, worktree: string, branch: string) {
-  await git(root, ["worktree", "remove", "--force", worktree]);
-  rmSync(worktree, { recursive: true, force: true });
-  await git(root, ["branch", "-D", branch]);
+/** Removes a task's worktree and branch, if they still exist. Throws if git refuses. */
+export async function removeWorkspace(root: string, worktree: string | undefined, branch: string) {
+  if (worktree && existsSync(worktree)) {
+    await git(root, ["worktree", "remove", "--force", worktree]);
+    rmSync(worktree, { recursive: true, force: true });
+  }
+  await git(root, ["worktree", "prune"]);
+  if (await branchExists(root, branch)) await git(root, ["branch", "-D", branch]);
 }
 
 export interface PullRequestInput {

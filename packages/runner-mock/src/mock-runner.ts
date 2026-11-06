@@ -200,6 +200,13 @@ export class MockRunner implements Runner {
     throw new Error(`Task ${id} has nothing to approve; the mock never asks.`);
   }
 
+  async deleteTask(id: string): Promise<void> {
+    const rec = this.get(id);
+    rec.scriptGen++;
+    this.records.delete(id);
+    this.emit({ type: "task.deleted", taskId: id, at: Date.now() });
+  }
+
   async writeTerminal(): Promise<void> {
     // The mock's terminal only shows scripted output.
   }

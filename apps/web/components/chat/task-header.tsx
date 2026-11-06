@@ -1,11 +1,13 @@
 "use client";
 
-import { ArrowUpRight, GitBranch, GitMerge, GitPullRequest, MessageSquare, Play, Square } from "lucide-react";
+import { useState } from "react";
+import { ArrowUpRight, GitBranch, GitMerge, GitPullRequest, MessageSquare, Play, Square, Trash2 } from "lucide-react";
 import type { Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
-import { startTask, stopTask } from "@/lib/actions";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { deleteTask, startTask, stopTask } from "@/lib/actions";
 import { reviewOf, useReview } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -41,6 +43,7 @@ export function TaskHeader({ task }: { task: Task }) {
       <div className="flex items-center gap-2">
         <ViewSwitch task={task} />
         <Actions task={task} />
+        <DeleteTask task={task} />
       </div>
     </header>
   );
@@ -83,6 +86,45 @@ function ViewSwitch({ task }: { task: Task }) {
         </button>
       ))}
     </div>
+  );
+}
+
+/** Deleting can't be undone, so it says what will go, in terms of this task. */
+function DeleteTask({ task }: { task: Task }) {
+  const [open, setOpen] = useState(false);
+  const landed = task.state === "merged";
+  return (
+    <>
+      <Button size="icon-sm" variant="ghost" onClick={() => setOpen(true)} aria-label="Delete task" title="Delete task">
+        <Trash2 />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete this task?</DialogTitle>
+            <DialogDescription>
+              {landed
+                ? `This removes the task and its local branch ${task.branch}. Merged work and any open pull request stay as they are.`
+                : `This stops the agent and permanently removes ${task.branch}, its worktree and the conversation. Any work on it that hasn't been merged will be lost.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setOpen(false);
+                void deleteTask(task.id);
+              }}
+            >
+              Delete task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

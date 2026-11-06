@@ -29,6 +29,7 @@ export const writeTerminal = (id: string, data: string) => {
 export const resizeTerminal = (id: string, cols: number, rows: number) => {
   getRunner().resizeTerminal(id, cols, rows).catch(() => {});
 };
+export const deleteTask = (id: string) => attempt(() => getRunner().deleteTask(id));
 export const stopTask = (id: string) => attempt(() => getRunner().stopTask(id));
 export function sendMessage(id: string, text: string, agent?: AgentKind) {
   const task = useSolus.getState().tasks[id];

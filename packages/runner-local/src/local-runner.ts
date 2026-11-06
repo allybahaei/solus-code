@@ -54,6 +54,8 @@ interface Rec extends StoredTask {
   /** Bumped to abandon a launch that is still preparing. */
   launch: number;
   abort?: AbortController;
+  /** The launch in progress, which may be creating the worktree. */
+  launching?: Promise<void>;
   /** What the agent was last started with, in case it has to start over. */
   lastMessage?: string;
   /** Agent events for this task, handled strictly in order. */
@@ -100,6 +102,7 @@ export class LocalRunner implements Runner {
       adapterFor,
       commands,
     );
+    runner.store.lock();
     await runner.restore();
     return runner;
   }
@@ -113,6 +116,7 @@ export class LocalRunner implements Runner {
       rec.shell?.kill();
     }
     this.listeners.clear();
+    this.store.unlock();
   }
 
   /* ---------------------------- Runner API ---------------------------- */
@@ -170,7 +174,7 @@ export class LocalRunner implements Runner {
     if (rec.task.state !== "idle") throw new Error(`Task ${id} is already started (${rec.task.state}).`);
     this.addMessage(rec, "user", rec.task.prompt);
     this.setState(rec, "working");
-    void this.launch(rec, rec.task.prompt);
+    rec.launching = this.launch(rec, rec.task.prompt);
   }
 
   async sendMessage(id: string, message: string, opts: { agent?: AgentKind } = {}): Promise<void> {
@@ -189,7 +193,7 @@ export class LocalRunner implements Runner {
     this.addMessage(rec, "user", message);
     if (state !== "working") this.setState(rec, "working");
     if (rec.session) rec.session.send(message);
-    else void this.launch(rec, message);
+    else rec.launching = this.launch(rec, message);
   }
 
   async answerApproval(id: string, approvalId: string, allow: boolean): Promise<void> {
@@ -208,6 +212,22 @@ export class LocalRunner implements Runner {
     rec.session?.stop();
     delete rec.session;
     this.setState(rec, "stuck", { error: { message: "Stopped by you" } });
+  }
+
+  deleteTask(id: string): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      rec.abort?.abort();
+      this.endSession(rec);
+      // Worktree creation can't be interrupted, so let it finish, then remove it.
+      await rec.launching;
+      // Only ever a branch and worktree Solus made for this task.
+      await removeWorkspace(this.repo.path, rec.worktree, rec.task.branch);
+      this.records.delete(id);
+      this.store.forget(id);
+      this.save();
+      this.emit({ type: "task.deleted", taskId: id, at: Date.now() });
+    });
   }
 
   async writeTerminal(id: string, data: string): Promise<void> {
@@ -535,7 +555,7 @@ export class LocalRunner implements Runner {
           delete rec.session;
           delete rec.agentSession;
           this.save();
-          if (rec.task.state === "working") void this.launch(rec, rec.lastMessage ?? rec.task.prompt);
+          if (rec.task.state === "working") rec.launching = this.launch(rec, rec.lastMessage ?? rec.task.prompt);
           break;
         case "ask":
           if (rec.task.state === "working") this.setState(rec, "needs_input", { question: event.question });

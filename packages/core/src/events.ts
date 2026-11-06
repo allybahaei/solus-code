@@ -25,6 +25,10 @@ export interface TaskCreatedEvent extends BaseEvent {
   task: Task;
 }
 
+export interface TaskDeletedEvent extends BaseEvent {
+  type: "task.deleted";
+}
+
 /** Carries the full task after the change, so listeners can replace their copy. */
 export interface TaskStateChangedEvent extends BaseEvent {
   type: "task.state_changed";
@@ -68,6 +72,7 @@ export interface RunnerErrorEvent {
 
 export type RunnerEvent =
   | TaskCreatedEvent
+  | TaskDeletedEvent
   | TaskStateChangedEvent
   | AgentOutputEvent
   | TerminalOutputEvent

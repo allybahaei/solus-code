@@ -86,6 +86,8 @@ export interface Runner {
   /** Answers the task's pending approval. To deny with a reason, use sendMessage. */
   answerApproval(id: string, approvalId: string, allow: boolean): Promise<void>;
   stopTask(id: string): Promise<void>;
+  /** Stops the task and removes it, with its local branch, worktree and history. */
+  deleteTask(id: string): Promise<void>;
   /** Types into the task's shell, starting it if needed. Empty data just starts it. */
   writeTerminal(id: string, data: string): Promise<void>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<void>;

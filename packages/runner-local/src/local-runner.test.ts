@@ -237,6 +237,87 @@ describe("saved state", () => {
   });
 });
 
+describe("one Solus per repo", () => {
+  const openAgain = () => LocalRunner.open({ repoPath: repo, home, adapterFor: () => new FakeAgent(1) });
+
+  it("refuses a second instance while the first is running", async () => {
+    await open();
+    await expect(openAgain()).rejects.toThrow(/already running on this repo/);
+  });
+
+  it("frees the repo on stop", async () => {
+    const first = await open();
+    first.dispose();
+    const second = await openAgain();
+    second.dispose();
+  });
+
+  it("takes over a lock left by a crash", async () => {
+    const first = await open();
+    first.dispose();
+    const dirs = execFileSync("find", [home, "-name", "tasks.json"], { encoding: "utf8" }).trim();
+    writeFileSync(join(dirs, "..", "lock"), "999999");
+    runner = await openAgain();
+    expect((await runner.snapshot()).tasks).toEqual([]);
+  });
+});
+
+describe("deleting a task", () => {
+  it("removes the worktree, branch and history, and leaves everything else alone", async () => {
+    const r = await open();
+    const keep = await newTask(r, "Keep this");
+    const t = await newTask(r, "Throw away");
+    await r.startTask(keep.id);
+    await r.startTask(t.id);
+    await reaches(r, t.id, "ready_for_review");
+    await reaches(r, keep.id, "ready_for_review");
+    const events: string[] = [];
+    r.subscribe((e) => events.push(e.type));
+
+    await r.deleteTask(t.id);
+
+    expect(events).toContain("task.deleted");
+    expect((await r.listTasks()).map((x) => x.id)).toEqual([keep.id]);
+    expect(sh(repo, "branch", "--list", "solus/*")).not.toContain(t.branch);
+    expect(sh(repo, "branch", "--list", "solus/*")).toContain(keep.branch);
+    expect(sh(repo, "branch", "--list", "main")).toContain("main");
+    expect(sh(repo, "worktree", "list").trim().split("\n")).toHaveLength(2);
+
+    r.dispose();
+    const again = await open();
+    expect((await again.snapshot()).tasks.map((x) => x.id)).toEqual([keep.id]);
+    expect((await again.snapshot()).messages[t.id]).toBeUndefined();
+  });
+
+  it("stops a running task first", async () => {
+    runner = await LocalRunner.open({ repoPath: repo, home, adapterFor: () => new FakeAgent(40) });
+    const t = await newTask(runner, "Running");
+    await runner.startTask(t.id);
+    await runner.deleteTask(t.id);
+    expect(await runner.listTasks()).toEqual([]);
+  });
+
+  it("works on a task that never started, and one whose worktree is gone", async () => {
+    const r = await open();
+    const idle = await newTask(r, "Idle");
+    await r.deleteTask(idle.id);
+
+    const t = await newTask(r, "Gone");
+    await r.startTask(t.id);
+    await reaches(r, t.id, "ready_for_review");
+    const wt = sh(repo, "worktree", "list", "--porcelain").match(/worktree (\S+tsk_\S+)/)?.[1] ?? "";
+    rmSync(wt, { recursive: true, force: true });
+    await r.deleteTask(t.id);
+    expect(await r.listTasks()).toEqual([]);
+    expect(sh(repo, "branch", "--list", "solus/*").trim()).toBe("");
+  });
+
+  it("refuses an unknown task", async () => {
+    const r = await open();
+    await expect(r.deleteTask("nope")).rejects.toThrow("Unknown task");
+  });
+});
+
 describe("reading diffs", () => {
   it("covers commits, edits, new, deleted and renamed files", async () => {
     sh(repo, "checkout", "-qb", "work");

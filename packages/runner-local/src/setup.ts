@@ -1,9 +1,10 @@
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
-import type { AgentCheck, SetupCheck, SetupStatus } from "@solus/core";
+import type { AgentCheck, AgentKind, SetupCheck, SetupStatus } from "@solus/core";
 
 const exec = promisify(execFile);
 const CHECK_TIMEOUT_MS = 15_000;
+const INSTALL_TIMEOUT_MS = 5 * 60_000;
 
 /** merge-tree --write-tree arrived in this version. */
 const MIN_GIT: readonly [number, number] = [2, 38];
@@ -15,7 +16,35 @@ export interface SetupCommands {
   claude?: string;
   codex?: string;
   opencode?: string;
+  cursor?: string;
+  npm?: string;
 }
+
+/**
+ * Official packages Solus can install when someone clicks Install. Claude Code's
+ * licence doesn't allow bundling it, so this fetches it from its maker instead.
+ */
+const PACKAGES: Partial<Record<AgentKind, string>> = {
+  "claude-code": "@anthropic-ai/claude-code",
+  codex: "@openai/codex",
+  opencode: "opencode-ai",
+};
+
+export async function installAgent(agent: AgentKind, npm = "npm"): Promise<void> {
+  const name = PACKAGES[agent];
+  if (!name) throw new Error(`Solus can't install ${agent}.`);
+  try {
+    await exec(npm, ["install", "-g", name], { timeout: INSTALL_TIMEOUT_MS });
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException & { stderr?: string };
+    if (e.code === "ENOENT") throw new Error("npm isn't on your PATH.", { cause: err });
+    const denied = /EACCES|permission denied/i.test(e.stderr ?? "");
+    throw new Error(denied ? `npm can't write to its global folder. Run \`npm i -g ${name}\` yourself.` : (e.stderr?.trim() || e.message), { cause: err });
+  }
+}
+
+/** Cursor's installer has called its command both of these. */
+export const cursorCommand = () => (spawnSync("cursor-agent", ["--version"]).error ? "agent" : "cursor-agent");
 
 interface Run {
   /** False when the executable isn't there at all. */
@@ -72,7 +101,7 @@ async function checkClaude(command: string): Promise<AgentCheck> {
     return { ...base, state: "problem", detail: "Solus was started from inside Claude Code.", fix: "Start Solus from a normal terminal" };
   }
   const result = await run(command, ["auth", "status", "--json"]);
-  if (!result.found) return { ...base, state: "missing", fix: "npm i -g @anthropic-ai/claude-code" };
+  if (!result.found) return { ...base, state: "missing", fix: "npm i -g @anthropic-ai/claude-code", installable: true };
   let status: { loggedIn?: boolean; authMethod?: string; subscriptionType?: string } = {};
   try {
     status = JSON.parse(result.stdout) as typeof status;
@@ -89,27 +118,42 @@ async function checkCodex(command: string): Promise<AgentCheck> {
   // This only reads saved credentials, so an expired login still passes here.
   // The adapter catches that on the first run and says how to fix it.
   const result = await run(command, ["login", "status"]);
-  if (!result.found) return { ...base, state: "missing", fix: "npm i -g @openai/codex" };
-  if (!result.ok) return { ...base, state: "signed_out", fix: "codex login" };
+  if (!result.found) return { ...base, state: "missing", fix: "npm i -g @openai/codex", installable: true };
+  if (!result.ok) return { ...base, state: "signed_out", fix: `${command} login` };
   return { ...base, state: "ready", detail: result.stdout.trim().split("\n")[0] ?? "Signed in" };
 }
 
 async function checkOpenCode(command: string): Promise<AgentCheck> {
   const base = { id: "opencode", agent: "opencode", label: "OpenCode" } as const;
   const result = await run(command, ["auth", "list"]);
-  if (!result.found) return { ...base, state: "missing", fix: "npm i -g opencode-ai" };
+  if (!result.found) return { ...base, state: "missing", fix: "npm i -g opencode-ai", installable: true };
   // Its free models work with no sign-in, so a missing provider isn't a problem.
   return { ...base, state: "ready", detail: "Billed by whichever provider you connected to OpenCode." };
 }
 
+async function checkCursor(command: string): Promise<AgentCheck> {
+  const base = { id: "cursor", agent: "cursor", label: "Cursor" } as const;
+  const missing = { ...base, state: "missing", fix: "curl https://cursor.com/install -fsS | bash" } as const;
+  const result = await run(command, ["status"]);
+  if (!result.found) return missing;
+  if (/not logged in/i.test(result.stdout)) return { ...base, state: "signed_out", fix: `${command} login` };
+  // `agent` is a common name, so only Cursor's own status counts.
+  if (!/logged in/i.test(result.stdout)) return missing;
+  const warning = process.env.CURSOR_API_KEY ? " CURSOR_API_KEY is set, so it may bill that key instead." : "";
+  return { ...base, state: "ready", detail: `Signed in to Cursor.${warning}` };
+}
+
 /** Checks what Solus depends on. Uses no agent usage: everything here is local. */
 export async function checkSetup(commands: SetupCommands = {}): Promise<SetupStatus> {
-  const [git, gh, claude, codex, opencode] = await Promise.all([
+  const [git, gh, claude, codex, opencode, cursor] = await Promise.all([
     checkGit(commands.git ?? "git"),
     checkGh(commands.gh ?? "gh"),
     checkClaude(commands.claude ?? "claude"),
     checkCodex(commands.codex ?? "codex"),
     checkOpenCode(commands.opencode ?? "opencode"),
+    checkCursor(commands.cursor ?? cursorCommand()),
   ]);
-  return { agents: [claude, codex, opencode], tools: [git, gh] };
+  // Cursor is optional and needs its own installer, so it only appears once it's there.
+  const agents = [claude, codex, opencode, ...(cursor.state === "missing" ? [] : [cursor])];
+  return { agents, tools: [git, gh] };
 }

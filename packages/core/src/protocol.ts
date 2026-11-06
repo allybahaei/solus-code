@@ -14,6 +14,7 @@ export const RUNNER_METHODS = [
   "getMessages",
   "createTask",
   "listSources",
+  "installAgent",
   "getPullRequest",
   "pushPullRequest",
   "mergePullRequest",

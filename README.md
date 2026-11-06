@@ -21,7 +21,7 @@ pnpm lint && pnpm typecheck && pnpm test
 
 ## Using it
 
-Solus runs your own Claude Code, Codex and OpenCode, on your own logins, so usage counts against your plans (with OpenCode, whichever provider you connected). Install and sign in to at least one of them, then run this inside a git repo:
+Solus runs your own Claude Code, Codex, OpenCode and Cursor, on your own logins, so usage counts against your plans (with OpenCode, whichever provider you connected). Install and sign in to at least one of them, then run this inside a git repo:
 
 ```bash
 npx solus-code

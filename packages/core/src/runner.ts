@@ -42,6 +42,8 @@ export interface SetupCheck {
 
 export interface AgentCheck extends SetupCheck {
   agent: AgentKind;
+  /** Solus can install it with installAgent. */
+  installable?: boolean;
 }
 
 /** Agents this runner can run, and the other tools it relies on. */
@@ -76,6 +78,8 @@ export interface Runner {
   snapshot(): Promise<RunnerSnapshot>;
   /** Checks installs and logins. Costs no agent usage. */
   checkSetup(): Promise<SetupStatus>;
+  /** Installs an agent's official package, on the user's say-so. Resolves with fresh checks. */
+  installAgent(agent: AgentKind): Promise<SetupStatus>;
   listTasks(): Promise<Task[]>;
   /** Full conversation so far, for opening a task that is already running. */
   getMessages(id: string): Promise<AgentMessage[]>;

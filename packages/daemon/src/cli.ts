@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 import type { AgentKind } from "@solus/core";
-import { ClaudeCodeAdapter, CodexAdapter, FakeAgent, LocalRunner, UnavailableAgent, openCodeAdapter, type AgentAdapter } from "@solus/runner-local";
+import { ClaudeCodeAdapter, CodexAdapter, FakeAgent, LocalRunner, UnavailableAgent, cursorAdapter, cursorCommand, openCodeAdapter, type AgentAdapter } from "@solus/runner-local";
 import { createMockRunner } from "@solus/runner-mock";
 import { startDaemon } from "./server";
 
@@ -22,7 +22,7 @@ const token = process.env.SOLUS_TOKEN ?? randomBytes(24).toString("hex");
 delete process.env.SOLUS_TOKEN;
 delete process.env.NEXT_PUBLIC_SOLUS_TOKEN;
 
-const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude: "Claude", codex: "Codex", opencode: "OpenCode", gemini: "Gemini" };
+const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude: "Claude", codex: "Codex", opencode: "OpenCode", cursor: "Cursor", gemini: "Gemini" };
 
 /** For installs that aren't on PATH. */
 const claude = process.env.SOLUS_CLAUDE_BIN;
@@ -35,6 +35,7 @@ function adapterFor(agent: AgentKind): AgentAdapter {
   if (agent === "claude-code") return new ClaudeCodeAdapter(claude ? { command: claude } : {});
   if (agent === "codex") return new CodexAdapter(codex ? { command: codex } : {});
   if (agent === "opencode") return openCodeAdapter(opencode);
+  if (agent === "cursor") return cursorAdapter(cursorCommand());
   return new UnavailableAgent(LABELS[agent]);
 }
 

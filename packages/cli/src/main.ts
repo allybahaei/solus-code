@@ -1,11 +1,21 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import type { AgentKind } from "@solus/core";
 import { startDaemon, type Daemon } from "@solus/daemon";
-import { ClaudeCodeAdapter, CodexAdapter, LocalRunner, UnavailableAgent, type AgentAdapter } from "@solus/runner-local";
+import {
+  ClaudeCodeAdapter,
+  CodexAdapter,
+  LocalRunner,
+  UnavailableAgent,
+  cursorAdapter,
+  cursorCommand,
+  openCodeAdapter,
+  type AgentAdapter,
+} from "@solus/runner-local";
 
 declare const __SOLUS_VERSION__: string;
 
@@ -22,12 +32,26 @@ Usage: solus-code [repo] [options]
   --version     Show the version.
   --help        Show this help.
 
-Agents run on your own Claude Code and Codex logins.
+Agents run on your own Claude Code, Codex, OpenCode and Cursor logins.
 `;
+
+/** Your own `codex` if you have one, otherwise the copy that ships with Solus. */
+function findCodex(): string | undefined {
+  if (!spawnSync("codex", ["--version"]).error) return undefined;
+  try {
+    return createRequire(import.meta.url).resolve("@openai/codex/bin/codex.js");
+  } catch {
+    return undefined;
+  }
+}
+
+const codex = findCodex();
 
 function adapterFor(agent: AgentKind): AgentAdapter {
   if (agent === "claude-code") return new ClaudeCodeAdapter();
-  if (agent === "codex") return new CodexAdapter();
+  if (agent === "codex") return new CodexAdapter(codex ? { command: codex } : {});
+  if (agent === "opencode") return openCodeAdapter();
+  if (agent === "cursor") return cursorAdapter(cursorCommand());
   return new UnavailableAgent(agent);
 }
 
@@ -71,7 +95,7 @@ async function main() {
 
   const repoPath = resolve(positionals[0] ?? process.cwd());
   const home = process.env.SOLUS_HOME;
-  const runner = await LocalRunner.open({ repoPath, adapterFor, ...(home ? { home } : {}) });
+  const runner = await LocalRunner.open({ repoPath, adapterFor, commands: codex ? { codex } : {}, ...(home ? { home } : {}) });
 
   const token = randomBytes(24).toString("hex");
   const staticDir = fileURLToPath(new URL("../web", import.meta.url));

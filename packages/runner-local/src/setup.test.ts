@@ -1,8 +1,8 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkSetup, describeClaudeLogin, gitIsNewEnough } from "./setup";
+import { checkSetup, describeClaudeLogin, gitIsNewEnough, installAgent } from "./setup";
 
 let dir: string;
 const saved = { CLAUDECODE: process.env.CLAUDECODE, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
@@ -34,12 +34,13 @@ const healthy = () => ({
   claude: tool("claude", `echo '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"pro"}'`),
   codex: tool("codex", "echo Logged in using ChatGPT"),
   opencode: tool("opencode", "echo Anthropic stored"),
+  cursor: tool("cursor", "echo Logged in as sam"),
 });
 
 describe("checkSetup", () => {
   it("reports everything ready, and how Claude will be billed", async () => {
     const { agents, tools } = await checkSetup(healthy());
-    expect(agents.map((a) => a.state)).toEqual(["ready", "ready", "ready"]);
+    expect(agents.map((a) => a.state)).toEqual(["ready", "ready", "ready", "ready"]);
     expect(tools.map((t) => t.state)).toEqual(["ready", "ready"]);
     expect(agents[0]?.detail).toContain("Claude Pro plan");
     expect(agents[1]?.detail).toBe("Logged in using ChatGPT");
@@ -47,7 +48,7 @@ describe("checkSetup", () => {
 
   it("says how to install what's missing", async () => {
     const nope = join(dir, "nope");
-    const { agents, tools } = await checkSetup({ git: nope, gh: nope, claude: nope, codex: nope, opencode: nope });
+    const { agents, tools } = await checkSetup({ git: nope, gh: nope, claude: nope, codex: nope, opencode: nope, cursor: nope });
     expect(agents.map((a) => [a.state, a.fix])).toEqual([
       ["missing", "npm i -g @anthropic-ai/claude-code"],
       ["missing", "npm i -g @openai/codex"],
@@ -63,11 +64,13 @@ describe("checkSetup", () => {
       claude: tool("claude", `echo '{"loggedIn":false}'; exit 1`),
       codex: tool("codex", "exit 1"),
       opencode: tool("opencode", "exit 1"),
+      cursor: tool("cursor", "echo Not logged in"),
     });
     expect(agents.map((a) => [a.state, a.fix])).toEqual([
       ["signed_out", "claude auth login"],
-      ["signed_out", "codex login"],
+      ["signed_out", `${join(dir, "codex")} login`],
       ["ready", undefined],
+      ["signed_out", `${join(dir, "cursor")} login`],
     ]);
     expect(tools[1]).toMatchObject({ state: "signed_out", fix: "gh auth login" });
   });
@@ -93,6 +96,17 @@ describe("checkSetup", () => {
     const { agents } = await checkSetup(healthy());
     expect(agents[0]?.detail).toContain("ANTHROPIC_API_KEY");
   });
+
+  it("hides Cursor unless it's Cursor's own command", async () => {
+    const { agents } = await checkSetup({ ...healthy(), cursor: tool("cursor", "echo some other tool") });
+    expect(agents.map((a) => a.id)).toEqual(["claude-code", "codex", "opencode"]);
+  });
+
+  it("offers to install what npm can install", async () => {
+    const nope = join(dir, "nope");
+    const { agents } = await checkSetup({ ...healthy(), claude: nope, codex: nope, opencode: nope });
+    expect(agents.filter((a) => a.installable).map((a) => a.id)).toEqual(["claude-code", "codex", "opencode"]);
+  });
 });
 
 it("compares git versions by number", () => {
@@ -106,4 +120,18 @@ it("describes each kind of Claude login", () => {
   expect(describeClaudeLogin({ authMethod: "claude.ai", subscriptionType: "max" })).toContain("Max plan");
   expect(describeClaudeLogin({ authMethod: "claude.ai" })).toContain("Claude account");
   expect(describeClaudeLogin({ authMethod: "api_key" })).toContain("API key");
+});
+
+describe("installAgent", () => {
+  it("installs the maker's own package and nothing else", async () => {
+    const npm = tool("npm", `echo "$@" > "${join(dir, "args")}"`);
+    await installAgent("claude-code", npm);
+    expect(readFileSync(join(dir, "args"), "utf8").trim()).toBe("install -g @anthropic-ai/claude-code");
+    await expect(installAgent("cursor", npm)).rejects.toThrow(/can't install/);
+  });
+
+  it("explains a global folder it can't write to", async () => {
+    const npm = tool("npm", "echo 'npm error code EACCES' >&2; exit 1");
+    await expect(installAgent("codex", npm)).rejects.toThrow(/npm i -g @openai\/codex/);
+  });
 });

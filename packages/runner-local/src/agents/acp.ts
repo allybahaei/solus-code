@@ -338,6 +338,11 @@ class AcpSession implements AgentSession {
 
 class RpcError extends Error {}
 
+/** Cursor asks through the protocol itself, so Solus's approvals work as they are. */
+export function cursorAdapter(command: string): AcpAdapter {
+  return new AcpAdapter({ label: "Cursor", command, args: ["acp"], login: `${command} login` });
+}
+
 /**
  * OpenCode runs commands without asking unless told otherwise, and has no
  * sandbox, so commands and web requests go through Solus's approvals.

@@ -83,6 +83,7 @@ export class RemoteRunner implements Runner {
   getMessages = (id: string) => this.call<AgentMessage[]>("getMessages", id);
   createTask = (input: CreateTaskInput) => this.call<Task>("createTask", input);
   listSources = () => this.call<TaskSources>("listSources");
+  installAgent = (agent: AgentKind) => this.call<SetupStatus>("installAgent", agent);
   getPullRequest = (id: string) => this.call<PullRequestStatus>("getPullRequest", id);
   pushPullRequest = (id: string) => this.run("pushPullRequest", id);
   mergePullRequest = (id: string, strategy: MergeStrategy) => this.run("mergePullRequest", id, strategy);

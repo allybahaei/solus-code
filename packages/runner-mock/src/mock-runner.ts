@@ -120,6 +120,10 @@ export class MockRunner implements Runner {
     };
   }
 
+  installAgent(): Promise<SetupStatus> {
+    return this.checkSetup();
+  }
+
   async checkSetup(): Promise<SetupStatus> {
     return {
       agents: [

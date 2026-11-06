@@ -38,7 +38,7 @@ import {
   removeWorktree,
   startMerge,
 } from "./merge";
-import { checkSetup, type SetupCommands } from "./setup";
+import { checkSetup, installAgent, type SetupCommands } from "./setup";
 import { mergePullRequest, readCheckLog, readPullRequest } from "./pull-request";
 import { ghJson, listSources, resolveSource } from "./source";
 import { WorkspaceShell, type ShellSize } from "./shell";
@@ -162,6 +162,11 @@ export class LocalRunner implements Runner {
   }
 
   checkSetup(): Promise<SetupStatus> {
+    return checkSetup(this.commands);
+  }
+
+  async installAgent(agent: AgentKind): Promise<SetupStatus> {
+    await installAgent(agent, this.commands.npm);
     return checkSetup(this.commands);
   }
 

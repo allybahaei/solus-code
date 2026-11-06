@@ -21,6 +21,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@openai/codex": "0.167.0",
     "node-pty": "^1.1.0",
     "ws": "^8.22.1"
   },

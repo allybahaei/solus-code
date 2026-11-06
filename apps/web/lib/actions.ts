@@ -24,6 +24,12 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
+/** Installs an agent's official package. Takes a while, so the button shows progress. */
+export async function installAgent(agent: AgentKind) {
+  const setup = await attempt(() => getRunner().installAgent(agent));
+  if (setup) useSolus.setState({ setup });
+}
+
 export async function recheckSetup() {
   const setup = await attempt(() => getRunner().checkSetup());
   if (setup) useSolus.setState({ setup });

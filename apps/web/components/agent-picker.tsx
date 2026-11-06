@@ -17,6 +17,7 @@ export const AGENTS: Record<AgentKind, { label: string; maker: string; descripti
   claude: { label: "Claude", maker: "Anthropic", description: "Chat and reasoning" },
   codex: { label: "Codex", maker: "OpenAI", description: "Coding agent" },
   opencode: { label: "OpenCode", maker: "Anomaly", description: "Open source coding agent" },
+  cursor: { label: "Cursor", maker: "Anysphere", description: "Cursor's coding agent" },
   gemini: { label: "Gemini", maker: "Google", description: "Gemini CLI" },
 };
 

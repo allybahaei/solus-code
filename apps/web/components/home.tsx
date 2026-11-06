@@ -1,8 +1,10 @@
 "use client";
 
-import { isAttention, type Task } from "@solus/core";
+import { useState } from "react";
+import { isAttention, type AgentKind, type Task } from "@solus/core";
 import { StateLabel } from "@/components/state-dot";
-import { recheckSetup } from "@/lib/actions";
+import { Button } from "@/components/ui/button";
+import { installAgent, recheckSetup } from "@/lib/actions";
 import { sidebarSections } from "@/lib/groups";
 import { useSolus } from "@/lib/store";
 
@@ -57,6 +59,7 @@ function SetupNotice() {
   const problems = checks.filter((c) => c.state !== "ready");
   if (problems.length === 0) return null;
   const noAgent = setup.agents.every((a) => a.state !== "ready");
+  const installable = new Map(setup.agents.filter((a) => a.installable).map((a) => [a.id, a.agent]));
 
   return (
     <section className="mt-8" aria-label="Setup">
@@ -72,6 +75,7 @@ function SetupNotice() {
             </div>
             {c.detail && <p className="mt-0.5 text-xs text-muted-foreground">{c.detail}</p>}
             {c.fix && <code className="mt-1.5 block font-mono text-xs break-all">{c.fix}</code>}
+            {installable.get(c.id) && <InstallButton agent={installable.get(c.id) as AgentKind} command={c.fix ?? ""} />}
           </li>
         ))}
       </ul>
@@ -83,6 +87,26 @@ function SetupNotice() {
         Check again
       </button>
     </section>
+  );
+}
+
+/** Installs the maker's own package. Nothing runs until someone clicks. */
+function InstallButton({ agent, command }: { agent: AgentKind; command: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      className="mt-2"
+      disabled={busy}
+      title={`Runs ${command}`}
+      onClick={() => {
+        setBusy(true);
+        void installAgent(agent).finally(() => setBusy(false));
+      }}
+    >
+      {busy ? "Installing…" : "Install"}
+    </Button>
   );
 }
 

@@ -13,6 +13,8 @@ export const RUNNER_METHODS = [
   "listTasks",
   "getMessages",
   "createTask",
+  "listSources",
+  "attachFile",
   "startTask",
   "sendMessage",
   "answerApproval",

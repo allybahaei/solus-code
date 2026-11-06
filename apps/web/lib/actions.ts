@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentKind, MergeOptions, PROptions } from "@solus/core";
+import type { AgentKind, MergeOptions, PROptions, TaskSource } from "@solus/core";
 import { getRunner } from "./runner";
 import { useSolus } from "./store";
 
@@ -17,6 +17,16 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
 export async function recheckSetup() {
   const setup = await attempt(() => getRunner().checkSetup());
   if (setup) useSolus.setState({ setup });
+}
+
+export const listSources = () => attempt(() => getRunner().listSources());
+
+/** Reads a browser file and stores it for the task. Returns its path, or undefined on failure. */
+export async function attachFile(id: string, file: File): Promise<string | undefined> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return attempt(() => getRunner().attachFile(id, file.name, btoa(binary)));
 }
 
 export const startTask = (id: string) => attempt(() => getRunner().startTask(id));
@@ -70,13 +80,21 @@ export async function openPullRequest(id: string, opts: PROptions): Promise<stri
 }
 
 /** Creates a task from a prompt, starts it and opens its tab. */
-export async function createAndStart(prompt: string, agent: AgentKind) {
+export async function createAndStart(prompt: string, agent: AgentKind, source?: TaskSource) {
   const firstLine = prompt.trim().split("\n")[0] ?? "";
-  const title = firstLine.length > 60 ? `${firstLine.slice(0, 57).trimEnd()}…` : firstLine;
+  // A source supplies its own title.
+  const title = source ? "" : firstLine.length > 60 ? `${firstLine.slice(0, 57).trimEnd()}…` : firstLine;
   const { repo } = useSolus.getState();
   if (!repo) return;
   const task = await attempt(() =>
-    getRunner().createTask({ repo: repo.name, title, prompt: prompt.trim(), baseBranch: repo.defaultBranch, agent }),
+    getRunner().createTask({
+      repo: repo.name,
+      title,
+      prompt: prompt.trim(),
+      baseBranch: repo.defaultBranch,
+      agent,
+      ...(source ? { source } : {}),
+    }),
   );
   if (!task) return;
   useSolus.getState().open(task.id);

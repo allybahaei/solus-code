@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   assertTransition,
   diffStats,
@@ -20,6 +20,7 @@ import {
   type SetupStatus,
   type Task,
   type TaskError,
+  type TaskSources,
   type TaskState,
 } from "@solus/core";
 import { RunningAction } from "./action";
@@ -36,6 +37,7 @@ import {
   startMerge,
 } from "./merge";
 import { checkSetup, type SetupCommands } from "./setup";
+import { listSources, resolveSource } from "./source";
 import { WorkspaceShell, type ShellSize } from "./shell";
 import { TaskStore, type StoredTask } from "./store";
 import { SetupError, copyFiles, createWorktree, readRepoConfig, runSetup, slugify, uniqueBranch } from "./workspace";
@@ -72,6 +74,9 @@ interface Rec extends StoredTask {
   /** Agent events for this task, handled strictly in order. */
   queue: Promise<void>;
 }
+
+/** Where attached files go. Inside the worktree so agents can read them, but never committed. */
+const ATTACHMENTS = ".solus-attachments";
 
 /** Each task gets a block of ports, so apps in parallel worktrees don't collide. */
 const FIRST_TASK_PORT = 41000;
@@ -165,17 +170,38 @@ export class LocalRunner implements Runner {
     return structuredClone(this.get(id).messages);
   }
 
+  listSources(): Promise<TaskSources> {
+    return listSources(this.repo.path, this.commands.gh ?? "gh", this.repo.defaultBranch);
+  }
+
+  async attachFile(id: string, name: string, base64: string): Promise<string> {
+    const rec = this.get(id);
+    if (!rec.worktree || !existsSync(rec.worktree)) throw new Error("Files can be attached once the task has started.");
+    // basename: the name comes from the browser and mustn't choose the folder.
+    const file = `${Date.now()}-${basename(name).replace(/[^\w.-]+/g, "-")}`;
+    mkdirSync(join(rec.worktree, ATTACHMENTS), { recursive: true });
+    // Ignores itself, so an agent's own `git add -A` can't commit these either.
+    writeFileSync(join(rec.worktree, ATTACHMENTS, ".gitignore"), "*\n");
+    writeFileSync(join(rec.worktree, ATTACHMENTS, file), Buffer.from(base64, "base64"));
+    return `${ATTACHMENTS}/${file}`;
+  }
+
   async createTask(input: CreateTaskInput): Promise<Task> {
     const taken = new Set([...this.records.values()].map((r) => r.task.branch));
-    const branch = await uniqueBranch(this.repo.path, input.title, taken);
+    const source = input.source
+      ? await resolveSource(this.repo.path, this.commands.gh ?? "gh", input.source, this.repo.defaultBranch)
+      : undefined;
+    if (source?.branch && taken.has(source.branch)) throw new Error(`A task is already using ${source.branch}.`);
+    const title = input.title || source?.title || "Untitled task";
+    const branch = source?.branch ?? (await uniqueBranch(this.repo.path, title, taken));
     const now = Date.now();
     const task: Task = {
       id: `tsk_${randomBytes(6).toString("hex")}`,
-      title: input.title,
-      prompt: input.prompt,
+      title,
+      prompt: [source?.prompt, input.prompt].filter(Boolean).join("\n\n"),
       repo: this.repo.name,
       branch,
-      baseBranch: input.baseBranch,
+      baseBranch: source?.baseBranch ?? input.baseBranch,
       agent: input.agent ?? "claude-code",
       state: "idle",
       changes: { files: 0, additions: 0, deletions: 0 },
@@ -183,7 +209,7 @@ export class LocalRunner implements Runner {
       lastActivityAt: now,
       port: this.freePort(),
     };
-    this.records.set(task.id, this.newRecord({ task }));
+    this.records.set(task.id, this.newRecord({ task, ...(source?.branch ? { existingBranch: true } : {}) }));
     this.save();
     this.emit({ type: "task.created", taskId: task.id, at: now, task: structuredClone(task) });
     return structuredClone(task);
@@ -301,7 +327,7 @@ export class LocalRunner implements Runner {
       // Worktree creation can't be interrupted, so let it finish, then remove it.
       await rec.launching;
       // Only ever a branch and worktree Solus made for this task.
-      await removeWorkspace(this.repo.path, rec.worktree, rec.task.branch);
+      await removeWorkspace(this.repo.path, rec.worktree, rec.task.branch, !rec.task.branch.startsWith("solus/"));
       this.records.delete(id);
       this.store.forget(id);
       this.save();
@@ -496,7 +522,7 @@ export class LocalRunner implements Runner {
   /** The merge has already happened, so a failed clean-up is only worth a note. */
   private async cleanUp(rec: Rec, worktree: string) {
     try {
-      await removeWorkspace(this.repo.path, worktree, rec.task.branch);
+      await removeWorkspace(this.repo.path, worktree, rec.task.branch, !rec.task.branch.startsWith("solus/"));
       delete rec.worktree;
       this.save();
       this.term(rec, `\x1b[2mRemoved the worktree and ${rec.task.branch}\x1b[0m\r\n`);
@@ -575,8 +601,9 @@ export class LocalRunner implements Runner {
 
   private save() {
     this.store.saveTasks(
-      [...this.records.values()].map(({ task, worktree, setupDone, agentSession }) => ({
+      [...this.records.values()].map(({ task, worktree, setupDone, agentSession, existingBranch }) => ({
         task,
+        ...(existingBranch ? { existingBranch } : {}),
         ...(worktree ? { worktree } : {}),
         ...(setupDone ? { setupDone } : {}),
         ...(agentSession ? { agentSession } : {}),
@@ -681,7 +708,10 @@ export class LocalRunner implements Runner {
     if (!rec.worktree) {
       const path = join(this.worktrees, task.id);
       this.term(rec, `\x1b[2mCreating worktree for ${task.branch}…\x1b[0m\r\n`);
-      const create = () => createWorktree(this.repo.path, path, task.branch, task.baseBranch);
+      const create = () =>
+        rec.existingBranch
+          ? addWorktree(this.repo.path, path, task.branch)
+          : createWorktree(this.repo.path, path, task.branch, task.baseBranch);
       const created = this.creating.then(create, create);
       this.creating = created.catch(() => {});
       await created;

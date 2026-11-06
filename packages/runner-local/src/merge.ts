@@ -142,13 +142,13 @@ export async function addWorktree(root: string, worktree: string, branch: string
 }
 
 /** Removes a task's worktree and branch, if they still exist. Throws if git refuses. */
-export async function removeWorkspace(root: string, worktree: string | undefined, branch: string) {
+export async function removeWorkspace(root: string, worktree: string | undefined, branch: string, keepBranch = false) {
   if (worktree && existsSync(worktree)) {
     await git(root, ["worktree", "remove", "--force", worktree]);
     rmSync(worktree, { recursive: true, force: true });
   }
   await git(root, ["worktree", "prune"]);
-  if (await branchExists(root, branch)) await git(root, ["branch", "-D", branch]);
+  if (!keepBranch && (await branchExists(root, branch))) await git(root, ["branch", "-D", branch]);
 }
 
 export interface PullRequestInput {

@@ -1,6 +1,6 @@
 import type { Diff, DiffFile } from "./diff";
 import type { AgentMessage, RunnerEvent } from "./events";
-import type { AgentKind, CreateTaskInput, Task } from "./task";
+import type { AgentKind, CreateTaskInput, Task, TaskSources } from "./task";
 
 export type MergeStrategy = "merge" | "squash" | "rebase";
 
@@ -81,6 +81,10 @@ export interface Runner {
   getMessages(id: string): Promise<AgentMessage[]>;
 
   createTask(input: CreateTaskInput): Promise<Task>;
+  /** Branches, open PRs and issues a task could start from. */
+  listSources(): Promise<TaskSources>;
+  /** Saves a file where the task's agent can read it. Returns its path in the worktree. */
+  attachFile(id: string, name: string, base64: string): Promise<string>;
   startTask(id: string): Promise<void>;
   /**
    * Reply to a question, nudge a stuck task, or request changes after review.

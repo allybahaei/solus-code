@@ -313,3 +313,125 @@ describe("opening a pull request", () => {
     expect((await task(r, t.id))?.state).toBe("ready_for_review");
   });
 });
+
+describe("starting from something that exists", () => {
+  const gh = (script: string) => {
+    const path = join(dir, "gh");
+    writeFileSync(path, `#!/bin/sh\n${script}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  const start = async (r: LocalRunner, id: string) => {
+    await r.startTask(id);
+    await reaches(r, id, "ready_for_review");
+  };
+  const ghWithIssues = `case "$1 $2" in
+  "issue view") echo '{"title":"Login is broken","body":"Steps to reproduce","url":"https://x/1"}';;
+  "pr view") echo '{"title":"Add search","body":"Why","baseRefName":"main","url":"https://x/9"}';;
+  "pr list") echo '[{"number":9,"title":"Add search"}]';;
+  "issue list") echo '[{"number":1,"title":"Login is broken"}]';;
+esac`;
+
+  it("lists branches, PRs and issues, leaving out the default and Solus's own", async () => {
+    sh(repo, "branch", "feature/a");
+    const r = await open(gh(ghWithIssues));
+    await finished(r);
+    await expect(r.listSources()).resolves.toEqual({
+      branches: ["feature/a"],
+      pullRequests: [{ number: 9, title: "Add search" }],
+      issues: [{ number: 1, title: "Login is broken" }],
+    });
+  });
+
+  it("still lists branches without gh", async () => {
+    sh(repo, "branch", "feature/a");
+    const r = await open(join(dir, "no-gh"));
+    await expect(r.listSources()).resolves.toMatchObject({ branches: ["feature/a"], pullRequests: [], issues: [] });
+  });
+
+  it("works on an existing branch, and deleting the task keeps that branch", async () => {
+    sh(repo, "checkout", "-qb", "feature/mine");
+    writeFileSync(join(repo, "mine.txt"), "x\n");
+    sh(repo, "add", "-A");
+    sh(repo, "commit", "-qm", "my work");
+    sh(repo, "checkout", "-q", "main");
+
+    const r = await open();
+    const t = await r.createTask({ repo: "repo", title: "", prompt: "Carry on", baseBranch: "main", source: { type: "branch", branch: "feature/mine" } });
+    expect(t.branch).toBe("feature/mine");
+    await start(r, t.id);
+    expect((await r.getDiff(t.id)).files.map((f) => f.path)).toContain("mine.txt");
+
+    await r.deleteTask(t.id);
+    expect(sh(repo, "branch", "--list", "feature/mine")).toContain("feature/mine");
+  });
+
+  it("refuses the default branch, a missing branch, and a branch already in use", async () => {
+    sh(repo, "branch", "feature/a");
+    const r = await open();
+    const input = (branch: string) => ({ repo: "repo", title: "", prompt: "", baseBranch: "main", source: { type: "branch" as const, branch } });
+    await expect(r.createTask(input("main"))).rejects.toThrow(/directly on main/);
+    await expect(r.createTask(input("nope"))).rejects.toThrow(/doesn't exist/);
+    await r.createTask(input("feature/a"));
+    await expect(r.createTask(input("feature/a"))).rejects.toThrow(/already using/);
+  });
+
+  it("starts from an issue with its text as the task", async () => {
+    const r = await open(gh(ghWithIssues));
+    const t = await r.createTask({ repo: "repo", title: "", prompt: "Check Safari too", baseBranch: "main", source: { type: "issue", number: 1 } });
+    expect(t.title).toBe("#1: Login is broken");
+    expect(t.branch).toBe("solus/1-login-is-broken");
+    expect(t.prompt).toContain("Steps to reproduce");
+    expect(t.prompt).toContain("Check Safari too");
+  });
+
+  it("checks out a PR's branch", async () => {
+    const bare = join(dir, "origin.git");
+    execFileSync("git", ["init", "-q", "--bare", bare]);
+    sh(repo, "remote", "add", "origin", bare);
+    sh(repo, "push", "-q", "origin", "main");
+    sh(repo, "checkout", "-qb", "contrib");
+    writeFileSync(join(repo, "contrib.txt"), "x\n");
+    sh(repo, "add", "-A");
+    sh(repo, "commit", "-qm", "contribution");
+    sh(repo, "push", "-q", "origin", "HEAD:refs/pull/9/head");
+    sh(repo, "checkout", "-q", "main");
+
+    const r = await open(gh(ghWithIssues));
+    const t = await r.createTask({ repo: "repo", title: "", prompt: "", baseBranch: "main", source: { type: "pr", number: 9 } });
+    expect(t.branch).toBe("solus/pr-9");
+    await start(r, t.id);
+    expect((await r.getDiff(t.id)).files.map((f) => f.path)).toContain("contrib.txt");
+  });
+
+  it("explains a missing gh when one is needed", async () => {
+    const r = await open(join(dir, "no-gh"));
+    await expect(r.createTask({ repo: "repo", title: "", prompt: "", baseBranch: "main", source: { type: "issue", number: 1 } })).rejects.toThrow(/GitHub CLI/);
+  });
+});
+
+describe("attachments", () => {
+  it("are readable in the worktree, but never shown or committed", async () => {
+    const r = await open();
+    const t = await finished(r);
+    const path = await r.attachFile(t.id, "../../evil name.png", Buffer.from("image").toString("base64"));
+    expect(path).toMatch(/^\.solus-attachments\/\d+-evil-name\.png$/);
+
+    await r.sendMessage(t.id, "See the file");
+    await reaches(r, t.id, "ready_for_review");
+    expect((await r.getDiff(t.id)).files.map((f) => f.path).join()).not.toContain("solus-attachments");
+
+    const worktree = sh(repo, "worktree", "list", "--porcelain").split("\n").find((l) => l.includes(t.id))?.replace("worktree ", "") ?? "";
+    sh(worktree, "add", "-A");
+    expect(sh(worktree, "diff", "--cached", "--name-only")).not.toContain("solus-attachments");
+
+    await r.merge(t.id, opts());
+    expect(sh(repo, "ls-files")).not.toContain("solus-attachments");
+  });
+
+  it("need a started task", async () => {
+    const r = await open();
+    const t = await r.createTask({ repo: "repo", title: "Idle", prompt: "Idle", baseBranch: "main" });
+    await expect(r.attachFile(t.id, "a.png", "")).rejects.toThrow(/once the task has started/);
+  });
+});

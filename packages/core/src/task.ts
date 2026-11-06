@@ -66,13 +66,25 @@ export interface Task {
   mergedInto?: string;
 }
 
+/** Where a task can start other than a blank prompt. */
+export type TaskSource = { type: "branch"; branch: string } | { type: "pr"; number: number } | { type: "issue"; number: number };
+
+export interface TaskSources {
+  branches: string[];
+  pullRequests: { number: number; title: string }[];
+  issues: { number: number; title: string }[];
+}
+
 export interface CreateTaskInput {
   repo: string;
+  /** Can be empty with a source, which then supplies it. */
   title: string;
+  /** Added to what the source provides. */
   prompt: string;
   baseBranch: string;
   /** Defaults to claude-code. */
   agent?: AgentKind;
+  source?: TaskSource;
 }
 
 /** Board order: attention states first, then most recent activity. */

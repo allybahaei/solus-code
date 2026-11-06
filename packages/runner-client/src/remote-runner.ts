@@ -13,6 +13,7 @@ import type {
   ServerMessage,
   SetupStatus,
   Task,
+  TaskSources,
 } from "@solus/core";
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
@@ -79,6 +80,8 @@ export class RemoteRunner implements Runner {
   listTasks = () => this.call<Task[]>("listTasks");
   getMessages = (id: string) => this.call<AgentMessage[]>("getMessages", id);
   createTask = (input: CreateTaskInput) => this.call<Task>("createTask", input);
+  listSources = () => this.call<TaskSources>("listSources");
+  attachFile = (id: string, name: string, base64: string) => this.call<string>("attachFile", id, name, base64);
   startTask = (id: string) => this.run("startTask", id);
   sendMessage = (id: string, message: string, opts?: { agent?: AgentKind }) =>
     this.run("sendMessage", id, message, opts ?? {});

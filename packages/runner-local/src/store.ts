@@ -9,6 +9,8 @@ export interface StoredTask {
   worktree?: string;
   /** The repo's setup command has finished in this worktree. */
   setupDone?: boolean;
+  /** The task uses an existing branch, so the worktree mustn't create one. */
+  existingBranch?: boolean;
   /** The agent's own session id, once it has run, for resuming. */
   agentSession?: string;
 }

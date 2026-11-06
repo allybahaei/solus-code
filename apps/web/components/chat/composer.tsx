@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { ArchiveRestore, ArrowUp, CircleAlert, MessageCircleQuestion, Play, ShieldQuestion } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArchiveRestore, ArrowUp, CircleAlert, MessageCircleQuestion, Paperclip, Play, ShieldQuestion, X } from "lucide-react";
 import type { AgentKind, Task } from "@solus/core";
 import { AgentPicker } from "@/components/agent-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { answerApproval, restoreTask, sendMessage, startTask } from "@/lib/actions";
+import { answerApproval, attachFile, restoreTask, sendMessage, startTask } from "@/lib/actions";
 import { useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,8 @@ const PLACEHOLDER: Record<Task["state"], string> = {
 
 export const COMPOSER_ID = "composer";
 
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
 /** Attention banner (question or error) plus the reply box. */
 export function Composer({ task }: { task: Task }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -34,11 +36,28 @@ export function Composer({ task }: { task: Task }) {
 
   const approvalId = task.approval?.id ?? "";
 
+  const [attached, setAttached] = useState<string[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const canAttach = !disabled && connected;
+
+  const attach = async (files: Iterable<File>) => {
+    for (const file of files) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        useSolus.getState().setNotice(`${file.name} is over the 20 MB limit.`);
+        continue;
+      }
+      const path = await attachFile(task.id, file);
+      if (path) setAttached((a) => [...a, path]);
+    }
+  };
+
   const send = () => {
-    const message = text.trim();
-    if (!message || disabled || !connected) return;
+    const typed = text.trim();
+    if ((!typed && attached.length === 0) || disabled || !connected) return;
+    const note = attached.length > 0 ? `Attached files, in this worktree:\n${attached.map((p) => `- ${p}`).join("\n")}` : "";
     setText("");
-    void sendMessage(task.id, message, agent);
+    setAttached([]);
+    void sendMessage(task.id, [typed, note].filter(Boolean).join("\n\n"), agent);
   };
 
   if (task.archivedAt) {
@@ -105,6 +124,12 @@ export function Composer({ task }: { task: Task }) {
               value={text}
               disabled={disabled}
               onChange={(e) => setText(e.target.value)}
+              onPaste={(e) => {
+                if (e.clipboardData.files.length > 0 && canAttach) {
+                  e.preventDefault();
+                  void attach(e.clipboardData.files);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
@@ -116,9 +141,48 @@ export function Composer({ task }: { task: Task }) {
               rows={4}
               className="max-h-80 min-h-28 resize-none border-0 bg-transparent px-3.5 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
             />
+            {attached.length > 0 && (
+              <ul className="flex flex-wrap gap-1 px-3 pb-2">
+                {attached.map((p) => (
+                  <li key={p} className="flex items-center gap-1 rounded bg-muted py-0.5 pr-1 pl-2 font-mono text-xs">
+                    {p.split("/").at(-1)?.replace(/^\d+-/, "")}
+                    <button
+                      type="button"
+                      onClick={() => setAttached((a) => a.filter((x) => x !== p))}
+                      aria-label={`Remove ${p}`}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="flex items-center justify-between px-2.5 pb-2.5">
-              <AgentPicker value={agent} onChange={setAgent} disabled={disabled} />
-              <Button size="icon-sm" onClick={send} disabled={disabled || !connected || !text.trim()} aria-label="Send">
+              <span className="flex items-center gap-1">
+                <AgentPicker value={agent} onChange={setAgent} disabled={disabled} />
+                <input
+                  ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files) void attach(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  disabled={!canAttach}
+                  onClick={() => fileInput.current?.click()}
+                  aria-label="Attach files"
+                  title="Attach files, or paste a screenshot"
+                >
+                  <Paperclip />
+                </Button>
+              </span>
+              <Button size="icon-sm" onClick={send} disabled={disabled || !connected || (!text.trim() && attached.length === 0)} aria-label="Send">
                 <ArrowUp />
               </Button>
             </div>

@@ -14,6 +14,7 @@ import {
   type RunnerSnapshot,
   type SetupStatus,
   type Task,
+  type TaskSources,
   type TaskState,
 } from "@solus/core";
 import {
@@ -154,6 +155,14 @@ export class MockRunner implements Runner {
     this.records.set(task.id, this.newRecord(task, undefined));
     this.emit({ type: "task.created", taskId: task.id, at: now, task: structuredClone(task) });
     return structuredClone(task);
+  }
+
+  async listSources(): Promise<TaskSources> {
+    return { branches: ["feature/search"], pullRequests: [], issues: [] };
+  }
+
+  async attachFile(_id: string, name: string): Promise<string> {
+    return name;
   }
 
   async startTask(id: string): Promise<void> {

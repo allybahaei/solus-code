@@ -1,0 +1,4 @@
+{"type": "thread.started", "thread_id": "01a1b0a0-0cad-72f2-b3a6-85e34bfa3f1a"}
+{"type": "turn.started"}
+{"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "I added `subtract(a, b)`."}}
+{"type": "turn.completed", "usage": {"input_tokens": 75774, "cached_input_tokens": 70528, "cache_write_input_tokens": 0, "output_tokens": 279, "reasoning_output_tokens": 10}}

@@ -1,0 +1,7 @@
+{"type": "thread.started", "thread_id": "01a1b0a0-c569-7b23-9353-dde86f8d3390"}
+{"type": "turn.started"}
+{"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "I’ll run the command exactly once and report its output."}}
+{"type": "item.started", "item": {"id": "item_1", "type": "command_execution", "command": "/bin/zsh -lc 'curl -sI --max-time 8 https://example.com'", "aggregated_output": "", "exit_code": null, "status": "in_progress"}}
+{"type": "item.completed", "item": {"id": "item_1", "type": "command_execution", "command": "/bin/zsh -lc 'curl -sI --max-time 8 https://example.com'", "aggregated_output": "", "exit_code": 6, "status": "failed"}}
+{"type": "item.completed", "item": {"id": "item_2", "type": "agent_message", "text": "The command ran once and produced no output. It exited with code 6, meaning curl couldn’t resolve the host name."}}
+{"type": "turn.completed", "usage": {"input_tokens": 29980, "cached_input_tokens": 25600, "cache_write_input_tokens": 0, "output_tokens": 108, "reasoning_output_tokens": 0}}

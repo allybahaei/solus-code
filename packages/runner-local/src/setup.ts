@@ -1,4 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AgentCheck, AgentKind, SetupCheck, SetupStatus } from "@solus/core";
 
@@ -43,8 +46,12 @@ export async function installAgent(agent: AgentKind, npm = "npm"): Promise<void>
   }
 }
 
-/** Cursor's installer has called its command both of these. */
-export const cursorCommand = () => (spawnSync("cursor-agent", ["--version"]).error ? "agent" : "cursor-agent");
+/** Cursor's installer uses ~/.local/bin, which often isn't on PATH, and has used both names. */
+export function cursorCommand(home = homedir()): string {
+  if (!spawnSync("cursor-agent", ["--version"]).error) return "cursor-agent";
+  const installed = join(home, ".local/bin/cursor-agent");
+  return existsSync(installed) ? installed : "agent";
+}
 
 interface Run {
   /** False when the executable isn't there at all. */

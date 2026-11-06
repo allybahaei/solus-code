@@ -1,8 +1,8 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkSetup, describeClaudeLogin, gitIsNewEnough, installAgent } from "./setup";
+import { checkSetup, cursorCommand, describeClaudeLogin, gitIsNewEnough, installAgent } from "./setup";
 
 let dir: string;
 const saved = { CLAUDECODE: process.env.CLAUDECODE, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
@@ -120,6 +120,21 @@ it("describes each kind of Claude login", () => {
   expect(describeClaudeLogin({ authMethod: "claude.ai", subscriptionType: "max" })).toContain("Max plan");
   expect(describeClaudeLogin({ authMethod: "claude.ai" })).toContain("Claude account");
   expect(describeClaudeLogin({ authMethod: "api_key" })).toContain("API key");
+});
+
+describe("cursorCommand", () => {
+  it("finds Cursor's install folder when it isn't on PATH", () => {
+    const path = process.env.PATH;
+    process.env.PATH = dir;
+    try {
+      expect(cursorCommand(dir)).toBe("agent");
+      mkdirSync(join(dir, ".local/bin"), { recursive: true });
+      writeFileSync(join(dir, ".local/bin/cursor-agent"), "");
+      expect(cursorCommand(dir)).toBe(join(dir, ".local/bin/cursor-agent"));
+    } finally {
+      process.env.PATH = path;
+    }
+  });
 });
 
 describe("installAgent", () => {

@@ -1,13 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server, type Socket } from "node:net";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
+import type { Socket } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
 import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
 import { ClaudeStream, summarizeTool, type ClaudeLine } from "./claude-stream";
+import { BRIDGE, ToolServer } from "./tool-server";
 
 export interface ClaudeCodeOptions {
   /** The executable. Tests point this at a stand-in. */
@@ -16,7 +15,6 @@ export interface ClaudeCodeOptions {
   stallMs?: number;
 }
 
-const BRIDGE = fileURLToPath(new URL("./mcp-bridge.mjs", import.meta.url));
 const STALL_MS = 10 * 60_000;
 const KILL_AFTER_MS = 3000;
 /** An approval waits for a person, so the tool call mustn't time out first. */
@@ -51,8 +49,6 @@ const SYSTEM_PROMPT = [
   "Leave your changes in the working tree. Solus handles committing and merging.",
 ].join(" ");
 
-const ASK_REPLY = "Your question is on the person's screen. End your turn now; their answer arrives as your next message.";
-
 const userLine = (text: string) =>
   JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } }) + "\n";
 
@@ -72,8 +68,7 @@ interface Pending {
 
 class ClaudeSession implements AgentSession {
   private child: ChildProcessWithoutNullStreams | null = null;
-  private server: Server | null = null;
-  private readonly dir: string;
+  private tools: ToolServer | null = null;
   private readonly pending = new Map<string, Pending>();
   private readonly stallMs: number;
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
@@ -87,7 +82,6 @@ class ClaudeSession implements AgentSession {
     private readonly options: ClaudeCodeOptions,
   ) {
     this.stallMs = options.stallMs ?? STALL_MS;
-    this.dir = mkdtempSync(join(tmpdir(), "solus-"));
 
     if (process.env.CLAUDECODE) {
       // Claude Code refuses this, and warns that nesting can crash live sessions.
@@ -100,8 +94,11 @@ class ClaudeSession implements AgentSession {
         data: "\x1b[33mANTHROPIC_API_KEY is set, so Claude Code may bill the API instead of your subscription.\x1b[0m\r\n",
       });
     }
-    this.listen();
-    this.launch();
+    this.tools = new ToolServer({
+      onAsk: (question) => emit({ type: "ask", question }),
+      onApproval: (socket, args) => this.onApproval(socket, args),
+    });
+    this.launch(this.tools);
   }
 
   send(message: string): void {
@@ -137,27 +134,7 @@ class ClaudeSession implements AgentSession {
     const pending = this.pending.get(id);
     if (!pending) return;
     this.pending.delete(id);
-    pending.socket.write(JSON.stringify({ text: JSON.stringify(decision) }) + "\n");
-  }
-
-  /** The bridge connects here for each tool call. */
-  private listen() {
-    const server = createServer((socket) => {
-      socket.on("error", () => {});
-      createInterface({ input: socket }).once("line", (line) => {
-        const { tool, args } = JSON.parse(line) as { tool: string; args: Record<string, unknown> };
-        if (tool === "ask_user") {
-          // Returns at once rather than blocking, so a person can take as long as
-          // they like, and the question survives a restart.
-          this.emit({ type: "ask", question: String(args.question ?? "The agent has a question.") });
-          socket.write(JSON.stringify({ text: ASK_REPLY }) + "\n");
-        } else if (tool === "approve") {
-          this.onApproval(socket, args);
-        }
-      });
-    });
-    server.listen(join(this.dir, "s"));
-    this.server = server;
+    ToolServer.reply(pending.socket, JSON.stringify(decision));
   }
 
   private onApproval(socket: Socket, args: Record<string, unknown>) {
@@ -169,15 +146,15 @@ class ClaudeSession implements AgentSession {
     this.emit({ type: "approval", id, tool, summary: summarizeTool(tool, input, this.start.cwd) });
   }
 
-  private launch() {
+  private launch(tools: ToolServer) {
     const { cwd, session, prompt } = this.start;
     const sessionId = session ?? randomUUID();
-    const mcpConfig = join(this.dir, "mcp.json");
+    const mcpConfig = join(tools.dir, "mcp.json");
     writeFileSync(
       mcpConfig,
       JSON.stringify({
         mcpServers: {
-          solus: { command: process.execPath, args: [BRIDGE], env: { SOLUS_SOCKET: join(this.dir, "s") } },
+          solus: { command: process.execPath, args: [BRIDGE], env: { SOLUS_SOCKET: tools.socketPath } },
         },
       }),
     );
@@ -279,7 +256,6 @@ class ClaudeSession implements AgentSession {
     this.clearStall();
     for (const { socket } of this.pending.values()) socket.destroy();
     this.pending.clear();
-    this.server?.close();
-    rmSync(this.dir, { recursive: true, force: true });
+    this.tools?.close();
   }
 }

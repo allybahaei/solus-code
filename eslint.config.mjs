@@ -9,7 +9,7 @@ export default defineConfig([
   ...tseslint.configs.strict,
   {
     files: ["**/*.mjs"],
-    languageOptions: { globals: { process: "readonly" } },
+    languageOptions: { globals: { process: "readonly", setTimeout: "readonly", setInterval: "readonly" } },
   },
   {
     rules: {

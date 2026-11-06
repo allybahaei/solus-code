@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 
 /**
  * Just enough markdown for agent messages: paragraphs, bullet and numbered
- * lists, **bold** and `code`. A real renderer can replace this later.
+ * lists, **bold**, `code` and [links](url). A real renderer can replace this later.
  */
 export function Markdown({ text }: { text: string }) {
   const blocks = text.split(/\n{2,}/);
@@ -44,7 +44,20 @@ export function Markdown({ text }: { text: string }) {
 }
 
 function inline(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g).map((part, i) => {
+    // Agents link to local files, which a browser can't open, so keep the name only.
+    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
+    if (link) {
+      return /^https?:/.test(link[2] ?? "") ? (
+        <a key={i} href={link[2]} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+          {link[1]}
+        </a>
+      ) : (
+        <code key={i} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]" title={link[2]}>
+          {link[1]}
+        </code>
+      );
+    }
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
     }

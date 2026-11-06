@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 import type { AgentKind } from "@solus/core";
-import { ClaudeCodeAdapter, FakeAgent, LocalRunner, UnavailableAgent, type AgentAdapter } from "@solus/runner-local";
+import { ClaudeCodeAdapter, CodexAdapter, FakeAgent, LocalRunner, UnavailableAgent, type AgentAdapter } from "@solus/runner-local";
 import { createMockRunner } from "@solus/runner-mock";
 import { startDaemon } from "./server";
 
@@ -23,7 +23,9 @@ const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude
 
 function adapterFor(agent: AgentKind): AgentAdapter {
   if (values.fake) return new FakeAgent();
-  return agent === "claude-code" ? new ClaudeCodeAdapter() : new UnavailableAgent(LABELS[agent]);
+  if (agent === "claude-code") return new ClaudeCodeAdapter();
+  if (agent === "codex") return new CodexAdapter();
+  return new UnavailableAgent(LABELS[agent]);
 }
 
 try {

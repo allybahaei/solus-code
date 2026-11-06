@@ -55,3 +55,11 @@ These need checking in 2d before relying on them.
 - **`acceptEdits` covers more than edits.** `touch approved.txt` ran with no prompt, so simple file commands inside the worktree don't reach the approval step. `curl` did. The agent can change files freely in its worktree; approvals are for everything else.
 - **Stopping very early leaves nothing to resume.** The session file exists but `--resume` fails with "No conversation found". The adapter reports `session_lost`, and the runner starts fresh with the task and the latest message.
 - **Error text is in `errors`**, not `result`, on `error_during_execution`.
+
+## From the first live Codex run
+
+- **`codex exec resume` has no `--sandbox` flag.** The adapter sets `sandbox_mode` with `-c` on every turn; a second-turn edit worked live.
+- **A missing session** prints `no rollout found` on stderr, with nothing on stdout.
+- **Item ids restart each turn**, so message ids include the turn number.
+- **Codex can't take input mid-turn.** Messages sent while it's working wait for the turn to end.
+- **Whether `git commit` works in Codex's sandbox from a worktree is still unknown.** It declined, following Solus's instruction to leave commits to Solus, which makes the question moot for the MVP.

@@ -28,6 +28,7 @@ export function Sidebar() {
   const pinned = useSolus((s) => s.pinned);
   const query = useSolus((s) => s.query);
   const showMerged = useSolus((s) => s.showMerged);
+  const activeId = useSolus((s) => s.activeId);
   const toggleMerged = useSolus((s) => s.toggleMerged);
   const { pinned: pinnedTasks, workspaces, merged } = sidebarSections(Object.values(tasks), pinned, query ?? "");
   const empty = Object.keys(tasks).length === 0;
@@ -60,7 +61,12 @@ export function Sidebar() {
             {workspaces.map((t) => (
               <WorkspaceRow key={t.id} task={t} />
             ))}
-            {(showMerged || query) && merged.map((t) => <WorkspaceRow key={t.id} task={t} />)}
+            {/* The open task stays listed when it merges, even with merged tasks collapsed. */}
+            {merged
+              .filter((t) => showMerged || query || t.id === activeId)
+              .map((t) => (
+                <WorkspaceRow key={t.id} task={t} />
+              ))}
           </Section>
         )}
 
@@ -101,11 +107,11 @@ function TopNav() {
       <div className="flex items-center gap-2 px-3 pb-2">
         <span
           aria-hidden
-          className="grid size-5 place-items-center rounded-md bg-foreground text-[11px] font-bold text-background"
+          className="grid size-5 place-items-center rounded-md bg-foreground text-[0.6875rem] font-bold text-background"
         >
           S
         </span>
-        <span className="text-[15px] font-semibold tracking-tight">Solus</span>
+        <span className="text-[0.9375rem] font-semibold tracking-tight">Solus</span>
       </div>
 
       <NavItem icon={<House />} label="Home" onClick={goHome} />

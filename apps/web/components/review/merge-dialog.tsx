@@ -12,10 +12,19 @@ import { reviewOf, rememberMergeMode, useReview, type MergeMode } from "@/lib/re
 import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-/** The agent's last message: its own summary of the work, which makes a good PR body. */
+/** The agent's closing message from each turn: its own summary of the work, which makes a good PR body. */
 function agentSummary(taskId: string): string {
-  const messages = useSolus.getState().messages[taskId] ?? [];
-  return stripLocalLinks([...messages].reverse().find((m) => m.role === "agent")?.text.trim() ?? "");
+  const closing: string[] = [];
+  let last = "";
+  for (const m of useSolus.getState().messages[taskId] ?? []) {
+    if (m.role === "agent") last = m.text.trim();
+    if (m.role === "user" && last) {
+      closing.push(last);
+      last = "";
+    }
+  }
+  if (last) closing.push(last);
+  return stripLocalLinks(closing.join("\n\n"));
 }
 
 export function MergeDialog() {

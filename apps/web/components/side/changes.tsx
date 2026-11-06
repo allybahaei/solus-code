@@ -25,7 +25,7 @@ export function Changes({ task, files }: { task: Task; files: DiffFile[] }) {
 
   return (
     <section aria-label="Changes" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3 text-sm">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3 text-sm">
         <span className="font-medium">Changes</span>
         <span className="text-muted-foreground tabular-nums">{files.length}</span>
         {files.length > 0 && (

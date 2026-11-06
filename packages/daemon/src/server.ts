@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 import { isRunnerMethod, type Runner, type ServerMessage } from "@solus/core";
+import { serveStatic } from "./static";
 
 export interface DaemonOptions {
   runner: Runner;
@@ -12,6 +13,8 @@ export interface DaemonOptions {
   port?: number;
   /** How often to check that browsers are still there. */
   heartbeatMs?: number;
+  /** The built UI, to serve on the same port. */
+  staticDir?: string;
 }
 
 export interface Daemon {
@@ -43,15 +46,31 @@ function originAllowed(origin: string | undefined): boolean {
   }
 }
 
+/**
+ * Refuses requests addressed to any other name, which is how DNS rebinding
+ * would reach a local server from a website.
+ */
+function hostAllowed(host: string | undefined): boolean {
+  if (!host) return false;
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(`http://${host}`).hostname);
+  } catch {
+    return false;
+  }
+}
+
 function authorized(req: IncomingMessage, token: string): boolean {
   const url = new URL(req.url ?? "/", "http://localhost");
-  return originAllowed(req.headers.origin) && tokenMatches(url.searchParams.get("token"), token);
+  return (
+    hostAllowed(req.headers.host) && originAllowed(req.headers.origin) && tokenMatches(url.searchParams.get("token"), token)
+  );
 }
 
 /** Serves a Runner to browsers over WebSocket, on this machine only. */
-export async function startDaemon({ runner, token, port = 0, heartbeatMs = 15_000 }: DaemonOptions): Promise<Daemon> {
-  const http = createServer((_req, res) => {
-    res.writeHead(404).end();
+export async function startDaemon({ runner, token, port = 0, heartbeatMs = 15_000, staticDir }: DaemonOptions): Promise<Daemon> {
+  const http = createServer((req, res) => {
+    if (staticDir && hostAllowed(req.headers.host)) serveStatic(staticDir, req, res);
+    else res.writeHead(404).end();
   });
   const wss = new WebSocketServer({ noServer: true });
   const alive = new WeakSet<WebSocket>();

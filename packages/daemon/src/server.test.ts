@@ -1,9 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import type { RunnerEvent } from "@solus/core";
 import { RemoteRunner, type ConnectionStatus } from "@solus/runner-client";
 import { createMockRunner, type MockRunner } from "@solus/runner-mock";
 import { startDaemon, type Daemon } from "./server";
+import { resolveFile } from "./static";
 
 const TOKEN = "test-token";
 
@@ -87,6 +92,62 @@ describe("daemon security", () => {
       });
     });
     expect(reply).toBe("Unknown method: dispose");
+  });
+});
+
+describe("serving the UI", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "solus-static-")));
+    mkdirSync(join(root, "ui", "_next", "static"), { recursive: true });
+    writeFileSync(join(root, "ui", "index.html"), "<h1>Solus</h1>");
+    writeFileSync(join(root, "ui", "_next", "static", "a.js"), "1");
+    writeFileSync(join(root, "secret.txt"), "nope");
+  });
+
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  async function serve() {
+    mock ??= createMockRunner({ speed: 50 });
+    daemon = await startDaemon({ runner: mock, token: TOKEN, staticDir: join(root, "ui") });
+    return daemon.port;
+  }
+
+  /** A raw request, because fetch would tidy a path like /../ away. */
+  const get = (port: number, path: string, host = `127.0.0.1:${port}`) =>
+    new Promise<{ status: number; body: string; headers: Record<string, unknown> }>((resolve) => {
+      const req = request({ host: "127.0.0.1", port, path, headers: { host } }, (res) => {
+        let body = "";
+        res.on("data", (d) => (body += d));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body, headers: res.headers }));
+      });
+      req.end();
+    });
+
+  it("serves the page and its assets", async () => {
+    const port = await serve();
+    const page = await get(port, "/");
+    expect(page).toMatchObject({ status: 200, body: "<h1>Solus</h1>" });
+    expect(page.headers["cache-control"]).toBe("no-store");
+    expect(page.headers["referrer-policy"]).toBe("no-referrer");
+    expect((await get(port, "/_next/static/a.js")).headers["cache-control"]).toContain("immutable");
+  });
+
+  it("won't serve files outside the UI folder", async () => {
+    const port = await serve();
+    for (const path of ["/../secret.txt", "/%2e%2e/secret.txt", "/..%2fsecret.txt", "/a/../../secret.txt"]) {
+      const res = await get(port, path);
+      expect(res.status, path).toBe(404);
+      expect(res.body).not.toContain("nope");
+    }
+    expect(resolveFile(join(root, "ui"), "/%00")).toBeNull();
+  });
+
+  it("refuses requests addressed to another hostname", async () => {
+    const port = await serve();
+    expect((await get(port, "/", "evil.example")).status).toBe(404);
+    expect((await get(port, "/", `localhost:${port}`)).status).toBe(200);
   });
 });
 

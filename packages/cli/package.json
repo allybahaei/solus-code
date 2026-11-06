@@ -1,0 +1,27 @@
+{
+  "name": "solus-code",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run coding agents in parallel, each in its own git worktree, and review and merge from one calm UI.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": { "solus-code": "dist/cli.mjs" },
+  "files": ["dist", "web"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node build.mjs",
+    "lint": "eslint src build.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@solus/core": "workspace:*",
+    "@solus/daemon": "workspace:*",
+    "@solus/runner-local": "workspace:*",
+    "@types/node": "^22",
+    "esbuild": "^0.25"
+  }
+}

@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // The packaged app is plain files served by the daemon.
+  ...(process.env.SOLUS_PACKAGED ? { output: "export" as const } : {}),
   turbopack: {
     rules: {
       "*.css": {

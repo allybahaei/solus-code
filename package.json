@@ -8,7 +8,8 @@
     "build": "pnpm --filter web build",
     "lint": "pnpm -r --parallel lint",
     "typecheck": "pnpm -r --parallel typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "package": "pnpm --filter solus-code build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

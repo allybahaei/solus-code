@@ -137,7 +137,7 @@ function ConnectionBanner() {
     <div role="status" className="shrink-0 border-b bg-state-needs-input-soft px-4 py-1.5 text-xs">
       {loaded
         ? "Lost the connection to the Solus daemon. Reconnecting…"
-        : "Can't reach the Solus daemon. Is it running? Retrying…"}
+        : "Can't reach Solus. Is it still running? If you reopened this tab, use the link from your terminal. Retrying…"}
     </div>
   );
 }

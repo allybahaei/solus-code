@@ -10,3 +10,5 @@ next-env.d.ts
 !.env.example
 .DS_Store
 .vercel
+packages/cli/web/
+*.tgz

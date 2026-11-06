@@ -1,6 +1,14 @@
 import type { DiffFile } from "@solus/core";
 import type { DiffSide, ReviewComment } from "./review-store";
 
+/**
+ * Agents link files by absolute path, which exposes local folders and usernames
+ * if it reaches a commit or pull request. Keeps the link text, drops the path.
+ */
+export function stripLocalLinks(text: string): string {
+  return text.replace(/\[([^\]]+)\]\((?!https?:)[^)]*\)/g, "`$1`").replace(/``/g, "`");
+}
+
 /** Text of one line in a patch, by side and line number, or undefined if it isn't in a hunk. */
 export function lineText(file: DiffFile, side: DiffSide, line: number): string | undefined {
   let oldLine = 0;

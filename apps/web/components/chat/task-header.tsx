@@ -19,7 +19,8 @@ export function TaskHeader({ task }: { task: Task }) {
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-sm font-medium">{title}</h1>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <StateLabel state={task.state} />
+          {/* The merged state also covers an opened PR, which may not be merged yet. */}
+          <StateLabel state={task.state} {...(task.pullRequest ? { label: "PR opened" } : {})} />
           <span className="inline-flex items-center gap-1.5">
             <AgentIcon agent={task.agent} className="size-3.5" />
             {AGENTS[task.agent].label}

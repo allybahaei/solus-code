@@ -63,3 +63,8 @@ These need checking in 2d before relying on them.
 - **Item ids restart each turn**, so message ids include the turn number.
 - **Codex can't take input mid-turn.** Messages sent while it's working wait for the turn to end.
 - **Whether `git commit` works in Codex's sandbox from a worktree is still unknown.** It declined, following Solus's instruction to leave commits to Solus, which makes the question moot for the MVP.
+
+## From the first live pull requests
+
+- **Agents link files by absolute path.** Copied into a PR body or commit message, that exposes local folders and usernames, so summaries are stripped to the file name first.
+- **The `merged` state covers an opened PR that may never merge**, so the UI says "PR opened" rather than claiming it merged. Solus doesn't yet follow what happens to a PR after opening it.

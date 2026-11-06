@@ -85,7 +85,7 @@ export function ReviewView({ task, files, narrow }: { task: Task; files: DiffFil
   const banner =
     task.state === "merged"
       ? task.pullRequest
-        ? `Merged through pull request #${task.pullRequest.number}. This review is read-only.`
+        ? `Pull request #${task.pullRequest.number} is open on GitHub. This review is read-only.`
         : `Merged into ${task.mergedInto ?? task.baseBranch}. This review is read-only.`
       : task.state === "working" || task.state === "needs_input" || task.state === "stuck"
         ? "The agent is still working, so this diff may change. Your draft comments are kept."

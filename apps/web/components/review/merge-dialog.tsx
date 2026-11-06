@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { mergeTask, openPullRequest } from "@/lib/actions";
+import { stripLocalLinks } from "@/lib/review-message";
 import { reviewOf, rememberMergeMode, useReview, type MergeMode } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,7 @@ import { cn } from "@/lib/utils";
 /** The agent's last message: its own summary of the work, which makes a good PR body. */
 function agentSummary(taskId: string): string {
   const messages = useSolus.getState().messages[taskId] ?? [];
-  return [...messages].reverse().find((m) => m.role === "agent")?.text.trim() ?? "";
+  return stripLocalLinks([...messages].reverse().find((m) => m.role === "agent")?.text.trim() ?? "");
 }
 
 export function MergeDialog() {

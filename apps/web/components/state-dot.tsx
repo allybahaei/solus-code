@@ -29,12 +29,12 @@ const TEXT: Record<TaskState, string> = {
   merged: "text-state-merged",
 };
 
-/** Dot + label, for headers. */
-export function StateLabel({ state }: { state: TaskState }) {
+/** Dot + label, for headers. `label` overrides the state's name. */
+export function StateLabel({ state, label }: { state: TaskState; label?: string }) {
   return (
     <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium whitespace-nowrap", TEXT[state])}>
       <StateDot state={state} />
-      {STATE_LABELS[state]}
+      {label ?? STATE_LABELS[state]}
     </span>
   );
 }

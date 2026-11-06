@@ -287,8 +287,91 @@ describe("opening a pull request", () => {
     await expect(r.openPullRequest(t.id, { ...pr, draft: true })).resolves.toEqual({ url: "https://github.com/acme/repo/pull/7" });
     expect(sh(bare, "log", "--format=%s", t.branch).trim().split("\n")[0]).toBe("Add a note");
     expect(readFileSync(join(dir, "gh-args"), "utf8")).toContain("--draft");
-    expect(await task(r, t.id)).toMatchObject({ state: "merged", pullRequest: { number: 7 } });
+    expect(await task(r, t.id)).toMatchObject({ state: "ready_for_review", pullRequest: { number: 7 } });
     expect(log()).toEqual(["init"]);
+  });
+
+  describe("following it", () => {
+    const view = (extra: object) =>
+      JSON.stringify({
+        state: "OPEN",
+        mergeable: "MERGEABLE",
+        reviewDecision: "CHANGES_REQUESTED",
+        statusCheckRollup: [
+          { name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://x/actions/runs/55/job/1" },
+          { name: "lint", status: "IN_PROGRESS", conclusion: "" },
+          { context: "deploy", state: "SUCCESS", targetUrl: "https://x/d" },
+        ],
+        comments: [{ id: "c1", author: { login: "sam" }, body: "Why?", url: "https://x/c1" }],
+        reviews: [{ id: "r1", author: { login: "sam" }, body: "", url: "https://x/r1" }],
+        ...extra,
+      });
+    const stub = (extra: object = {}) =>
+      fakeGh(`case "$1 $2" in
+  "pr create") echo https://github.com/acme/repo/pull/7;;
+  "pr view") echo '${view(extra)}';;
+  "pr merge") echo merged;;
+  "run view") printf 'one\\ntwo\\n';;
+  api*) echo '[{"id":3,"user":{"login":"kim"},"body":"Rename","path":"a.ts","line":4,"html_url":"https://x/3"}]';;
+esac`);
+    const opened = async (gh: string) => {
+      const bare = addRemote();
+      const r = await open(gh);
+      const t = await finished(r);
+      await r.openPullRequest(t.id, pr);
+      return { r, t, bare };
+    };
+
+    it("reads checks and every kind of comment", async () => {
+      const { r, t } = await opened(stub());
+      await expect(r.getPullRequest(t.id)).resolves.toEqual({
+        state: "open",
+        conflicts: false,
+        reviewDecision: "CHANGES_REQUESTED",
+        checks: [
+          { name: "build", state: "failed", url: "https://x/actions/runs/55/job/1" },
+          { name: "lint", state: "pending" },
+          { name: "deploy", state: "passed", url: "https://x/d" },
+        ],
+        comments: [
+          { id: "c1", author: "sam", body: "Why?", url: "https://x/c1" },
+          { id: "3", author: "kim", body: "Rename", path: "a.ts", line: 4, url: "https://x/3" },
+        ],
+      });
+      await expect(r.getCheckLog(t.id, "https://x/actions/runs/55/job/1")).resolves.toBe("one\ntwo");
+      await expect(r.getCheckLog(t.id, "https://ci.example/9")).resolves.toBe("");
+    });
+
+    it("sends follow-up work to the same pull request", async () => {
+      const { r, t, bare } = await opened(stub());
+      await r.sendMessage(t.id, "Rename it");
+      await reaches(r, t.id, "ready_for_review");
+      await r.pushPullRequest(t.id);
+      expect(sh(bare, "log", "--format=%s", t.branch).split("\n")[0]).toBe(`Update ${t.title}`);
+    });
+
+    it("pushes new work before merging, and ends the task", async () => {
+      const { r, t, bare } = await opened(stub());
+      await r.sendMessage(t.id, "One more thing");
+      await reaches(r, t.id, "ready_for_review");
+      await r.mergePullRequest(t.id, "squash");
+      expect(readFileSync(join(dir, "gh-args"), "utf8")).toContain("--squash");
+      expect(sh(bare, "log", "--format=%s", t.branch).split("\n")[0]).toBe(`Update ${t.title}`);
+      expect(await task(r, t.id)).toMatchObject({ state: "merged", mergedInto: "main" });
+    });
+
+    it("notices a pull request merged on GitHub", async () => {
+      const { r, t } = await opened(stub({ state: "MERGED" }));
+      await r.getPullRequest(t.id);
+      expect(await task(r, t.id)).toMatchObject({ state: "merged", mergedInto: "main" });
+    });
+
+    it("needs a pull request", async () => {
+      const r = await open();
+      const t = await finished(r);
+      await expect(r.getPullRequest(t.id)).rejects.toThrow(/no pull request/);
+      await expect(r.pushPullRequest(t.id)).rejects.toThrow(/no pull request/);
+    });
   });
 
   it("explains a repo with no remote", async () => {
@@ -327,7 +410,7 @@ describe("starting from something that exists", () => {
   };
   const ghWithIssues = `case "$1 $2" in
   "issue view") echo '{"title":"Login is broken","body":"Steps to reproduce","url":"https://x/1"}';;
-  "pr view") echo '{"title":"Add search","body":"Why","baseRefName":"main","url":"https://x/9"}';;
+  "pr view") echo '{"title":"Add search","body":"Why","baseRefName":"main","headRefName":"contrib","isCrossRepository":false,"url":"https://x/9","headRefOid":"abc"}';;
   "pr list") echo '[{"number":9,"title":"Add search"}]';;
   "issue list") echo '[{"number":1,"title":"Login is broken"}]';;
 esac`;
@@ -400,8 +483,12 @@ esac`;
     const r = await open(gh(ghWithIssues));
     const t = await r.createTask({ repo: "repo", title: "", prompt: "", baseBranch: "main", source: { type: "pr", number: 9 } });
     expect(t.branch).toBe("solus/pr-9");
+    await expect(r.createTask({ repo: "repo", title: "", prompt: "", baseBranch: "main", source: { type: "pr", number: 9 } })).rejects.toThrow(/PR #9/);
     await start(r, t.id);
     expect((await r.getDiff(t.id)).files.map((f) => f.path)).toContain("contrib.txt");
+
+    await r.pushPullRequest(t.id);
+    expect(sh(bare, "log", "--format=%s", "contrib").split("\n")[0]).toBe(`Update ${t.title}`);
   });
 
   it("explains a missing gh when one is needed", async () => {

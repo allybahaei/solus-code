@@ -135,7 +135,7 @@ describe("MockRunner without autopilot", () => {
     expect(await stateOf(runner, "tsk_date_fns")).toBe("ready_for_review");
   });
 
-  it("opens a pull request and marks the task merged", async () => {
+  it("opens a pull request and keeps the task open until it merges", async () => {
     const { url } = await runner.openPullRequest("tsk_stripe_v22", {
       title: "Upgrade Stripe SDK to v22",
       body: "",
@@ -143,7 +143,7 @@ describe("MockRunner without autopilot", () => {
     });
     expect(url).toBe("https://github.com/acme/storefront/pull/412");
     const task = (await runner.listTasks()).find((t) => t.id === "tsk_stripe_v22");
-    expect(task?.state).toBe("merged");
+    expect(task?.state).toBe("ready_for_review");
     expect(task?.pullRequest?.number).toBe(412);
   });
 

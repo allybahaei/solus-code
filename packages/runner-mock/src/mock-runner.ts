@@ -13,6 +13,7 @@ import {
   type RunnerEvent,
   type RunnerSnapshot,
   type SetupStatus,
+  type PullRequestStatus,
   type Task,
   type TaskSources,
   type TaskState,
@@ -296,8 +297,33 @@ export class MockRunner implements Runner {
         "",
       ].join("\r\n"),
     );
-    this.setState(rec, "merged", { pullRequest: { url, number } });
+    rec.task.pullRequest = { url, number };
+    this.emit({ type: "task.updated", taskId: id, at: Date.now(), task: structuredClone(rec.task) });
     return { url };
+  }
+
+  async getPullRequest(id: string): Promise<PullRequestStatus> {
+    const { task } = this.get(id);
+    return {
+      state: task.state === "merged" ? "merged" : "open",
+      conflicts: false,
+      checks: [{ name: "build", state: "passed" }],
+      comments: [],
+    };
+  }
+
+  async pushPullRequest(id: string): Promise<void> {
+    this.requireReview(this.get(id), "push");
+  }
+
+  async mergePullRequest(id: string): Promise<void> {
+    const rec = this.get(id);
+    this.requireReview(rec, "merge");
+    this.setState(rec, "merged", { mergedInto: rec.task.baseBranch });
+  }
+
+  async getCheckLog(): Promise<string> {
+    return "";
   }
 
   subscribe(listener: (event: RunnerEvent) => void): () => void {
@@ -554,7 +580,7 @@ export class MockRunner implements Runner {
           title: task.title,
           body: task.prompt,
           baseBranch: task.baseBranch,
-        });
+        }).then(() => this.mergePullRequest(task.id));
     }
   }
 }

@@ -13,6 +13,7 @@ import { BottomPane, RunPanel } from "@/components/side/run-panel";
 import { TerminalView } from "@/components/side/terminal";
 import { SEARCH_ID, Sidebar } from "@/components/sidebar";
 import { MergeDialog } from "@/components/review/merge-dialog";
+import { ChecksView } from "@/components/checks/checks-view";
 import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/review-view";
 import { startTask } from "@/lib/actions";
 import { loadReviewPrefs, useReview } from "@/lib/review-store";
@@ -64,6 +65,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
   const view = useSolus((s) => s.centerView);
   const setView = useSolus((s) => s.setCenterView);
   const reviewing = useReview((s) => (task ? s.view[task.id] === "review" : false));
+  const checking = useReview((s) => (task ? s.view[task.id] === "checks" : false));
 
   if (status === "error") {
     return <Empty>Couldn&apos;t reach the runner: {error}</Empty>;
@@ -97,7 +99,9 @@ function ActiveTask({ wide }: { wide: boolean }) {
         </div>
       )}
       {current === "chat" &&
-        (wide && reviewing ? (
+        (wide && checking && task.pullRequest ? (
+          <ChecksView key={task.id} task={task} />
+        ) : wide && reviewing ? (
           <ReviewView key={task.id} task={task} files={files} narrow={false} />
         ) : (
           <>
@@ -260,10 +264,13 @@ function useKeyboard() {
             if (task?.state === "idle") void startTask(task.id);
             return true;
           case "m":
-            if (task?.state === "ready_for_review") r.openMerge(task.id, "merge");
+            if (task?.state === "ready_for_review") {
+              if (task.pullRequest) r.setView(task.id, "checks");
+              else r.openMerge(task.id, "merge");
+            }
             return true;
           case "p":
-            if (task?.state === "ready_for_review") r.openMerge(task.id, "pr");
+            if (task?.state === "ready_for_review" && !task.pullRequest) r.openMerge(task.id, "pr");
             return true;
           default:
             return false;

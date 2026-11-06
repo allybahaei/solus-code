@@ -18,6 +18,8 @@ import {
   type RunnerEvent,
   type RunnerSnapshot,
   type SetupStatus,
+  type MergeStrategy,
+  type PullRequestStatus,
   type Task,
   type TaskError,
   type TaskSources,
@@ -26,7 +28,7 @@ import {
 import { RunningAction } from "./action";
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { readDiff } from "./diff";
-import { branchExists, readRepo } from "./git";
+import { branchExists, git, readRepo } from "./git";
 import {
   addWorktree,
   commitAll,
@@ -37,7 +39,8 @@ import {
   startMerge,
 } from "./merge";
 import { checkSetup, type SetupCommands } from "./setup";
-import { listSources, resolveSource } from "./source";
+import { mergePullRequest, readCheckLog, readPullRequest } from "./pull-request";
+import { ghJson, listSources, resolveSource } from "./source";
 import { WorkspaceShell, type ShellSize } from "./shell";
 import { TaskStore, type StoredTask } from "./store";
 import { SetupError, copyFiles, createWorktree, readRepoConfig, runSetup, slugify, uniqueBranch } from "./workspace";
@@ -171,7 +174,7 @@ export class LocalRunner implements Runner {
   }
 
   listSources(): Promise<TaskSources> {
-    return listSources(this.repo.path, this.commands.gh ?? "gh", this.repo.defaultBranch);
+    return listSources(this.repo.path, this.gh, this.repo.defaultBranch);
   }
 
   async attachFile(id: string, name: string, base64: string): Promise<string> {
@@ -188,8 +191,12 @@ export class LocalRunner implements Runner {
 
   async createTask(input: CreateTaskInput): Promise<Task> {
     const taken = new Set([...this.records.values()].map((r) => r.task.branch));
+    const wanted = input.source?.type === "pr" ? input.source.number : undefined;
+    if (wanted && [...this.records.values()].some((r) => r.task.pullRequest?.number === wanted && r.task.state !== "merged")) {
+      throw new Error(`A task is already following PR #${wanted}.`);
+    }
     const source = input.source
-      ? await resolveSource(this.repo.path, this.commands.gh ?? "gh", input.source, this.repo.defaultBranch)
+      ? await resolveSource(this.repo.path, this.gh, input.source, this.repo.defaultBranch)
       : undefined;
     if (source?.branch && taken.has(source.branch)) throw new Error(`A task is already using ${source.branch}.`);
     const title = input.title || source?.title || "Untitled task";
@@ -202,6 +209,7 @@ export class LocalRunner implements Runner {
       repo: this.repo.name,
       branch,
       baseBranch: source?.baseBranch ?? input.baseBranch,
+      ...(source?.pullRequest ? { pullRequest: source.pullRequest } : {}),
       agent: input.agent ?? "claude-code",
       state: "idle",
       changes: { files: 0, additions: 0, deletions: 0 },
@@ -426,11 +434,40 @@ export class LocalRunner implements Runner {
         ...(this.commands.gh ? { gh: this.commands.gh } : {}),
       });
       this.term(rec, `\x1b[2mOpened ${pr.url}\x1b[0m\r\n`);
-      this.endSession(rec);
-      this.store.saveDiff(rec.task.id, rec.files);
-      this.setState(rec, "merged", { pullRequest: pr });
+      // The task stays open: review comments and failed checks come back to it.
+      rec.task.pullRequest = pr;
+      this.updated(rec);
       return { url: pr.url };
     });
+  }
+
+  async getPullRequest(id: string): Promise<PullRequestStatus> {
+    const rec = this.get(id);
+    const status = await readPullRequest(this.repo.path, this.gh, this.requirePullRequest(rec).number);
+    if (status.state === "merged" && rec.task.state === "ready_for_review") this.landed(rec);
+    return status;
+  }
+
+  pushPullRequest(id: string): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      await this.publish(rec, this.readyWorktree(rec, "push"));
+    });
+  }
+
+  mergePullRequest(id: string, strategy: MergeStrategy): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      // Merging what's on GitHub alone would leave the agent's latest work behind.
+      await this.publish(rec, this.readyWorktree(rec, "merge"));
+      await mergePullRequest(this.repo.path, this.gh, this.requirePullRequest(rec).number, strategy);
+      this.landed(rec);
+    });
+  }
+
+  getCheckLog(id: string, url: string): Promise<string> {
+    this.get(id);
+    return readCheckLog(this.repo.path, this.gh, url);
   }
 
   subscribe(listener: (event: RunnerEvent) => void): () => void {
@@ -439,6 +476,36 @@ export class LocalRunner implements Runner {
   }
 
   /* ----------------------------- internals ---------------------------- */
+
+  private get gh() {
+    return this.commands.gh ?? "gh";
+  }
+
+  private requirePullRequest(rec: Rec) {
+    if (!rec.task.pullRequest) throw new Error("This task has no pull request.");
+    return rec.task.pullRequest;
+  }
+
+  private async publish(rec: Rec, worktree: string) {
+    const pr = this.requirePullRequest(rec);
+    await commitAll(worktree, `Update ${rec.task.title}`, this.copiedFiles());
+    if (pr.fork) {
+      const { headRefOid } = await ghJson<{ headRefOid: string }>(this.gh, this.repo.path, ["pr", "view", String(pr.number), "--json", "headRefOid"]);
+      if ((await git(worktree, ["rev-parse", "HEAD"])).trim() !== headRefOid) {
+        throw new Error("This pull request comes from a fork, so Solus can't push to it.");
+      }
+      return;
+    }
+    await git(worktree, ["push", "origin", `HEAD:refs/heads/${pr.head ?? rec.task.branch}`]);
+    this.term(rec, `\x1b[2mPushed to pull request #${pr.number}\x1b[0m\r\n`);
+  }
+
+  private landed(rec: Rec) {
+    this.term(rec, `\x1b[2mPull request #${rec.task.pullRequest?.number} merged\x1b[0m\r\n`);
+    this.endSession(rec);
+    this.store.saveDiff(rec.task.id, rec.files);
+    this.setState(rec, "merged", { mergedInto: rec.task.baseBranch });
+  }
 
   private oneAtATime<T>(work: () => Promise<T>): Promise<T> {
     const run = this.merges.then(work, work);
@@ -572,6 +639,8 @@ export class LocalRunner implements Runner {
       rec.terminal = this.store.loadTerminal(stored.task.id);
       delete rec.task.running;
       rec.task.port ??= this.freePort();
+      // Opening a PR used to end a task. It stays open now, until the PR merges.
+      if (rec.task.state === "merged" && rec.task.pullRequest && !rec.task.mergedInto && rec.worktree) rec.task.state = "ready_for_review";
       // Its agent died with the last daemon. Replying starts it again.
       if (rec.task.state === "working" || rec.task.approval) {
         rec.task.state = "stuck";

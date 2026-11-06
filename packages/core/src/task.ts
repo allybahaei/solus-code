@@ -30,6 +30,35 @@ export interface ApprovalRequest {
 export interface PullRequestRef {
   url: string;
   number: number;
+  /** The PR's branch on origin, when the task's own branch has another name. */
+  head?: string;
+  /** The PR comes from a fork, which Solus can't push to. */
+  fork?: boolean;
+}
+
+export interface PullRequestCheck {
+  name: string;
+  state: "pending" | "passed" | "failed" | "skipped";
+  url?: string;
+}
+
+export interface PullRequestComment {
+  id: string;
+  author: string;
+  body: string;
+  /** Set on a comment about a line of the diff. */
+  path?: string;
+  line?: number;
+  url?: string;
+}
+
+export interface PullRequestStatus {
+  state: "open" | "merged" | "closed";
+  conflicts: boolean;
+  /** GitHub's value, such as APPROVED or CHANGES_REQUESTED. */
+  reviewDecision?: string;
+  checks: PullRequestCheck[];
+  comments: PullRequestComment[];
 }
 
 export interface Task {
@@ -60,7 +89,7 @@ export interface Task {
   port?: number;
   /** The saved command running now, if any. */
   running?: string;
-  /** Set once merged through a pull request. */
+  /** The task's pull request. It may still be open: the state says if it landed. */
   pullRequest?: PullRequestRef;
   /** Set once merged locally: the branch it was merged into. */
   mergedInto?: string;

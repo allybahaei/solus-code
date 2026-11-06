@@ -1,6 +1,15 @@
 "use client";
 
-import type { AgentKind, MergeOptions, PROptions, TaskSource } from "@solus/core";
+import type {
+  AgentKind,
+  MergeOptions,
+  MergeStrategy,
+  PROptions,
+  PullRequestCheck,
+  PullRequestComment,
+  PullRequestStatus,
+  TaskSource,
+} from "@solus/core";
 import { getRunner } from "./runner";
 import { useSolus } from "./store";
 
@@ -17,6 +26,32 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
 export async function recheckSetup() {
   const setup = await attempt(() => getRunner().checkSetup());
   if (setup) useSolus.setState({ setup });
+}
+
+/** Reads a task's pull request. Returns the status, or an error message for the view to show. */
+export async function readPullRequest(id: string): Promise<PullRequestStatus | string> {
+  try {
+    return await getRunner().getPullRequest(id);
+  } catch (err) {
+    return message(err);
+  }
+}
+
+export const pushPullRequest = (id: string) => attempt(() => getRunner().pushPullRequest(id));
+
+export const mergePullRequest = (id: string, strategy: MergeStrategy) => attempt(() => getRunner().mergePullRequest(id, strategy));
+
+/** Sends a failed check to the agent, with its log so it can work without reaching GitHub. */
+export async function fixCheck(id: string, pr: number, check: PullRequestCheck) {
+  const log = check.url ? await attempt(() => getRunner().getCheckLog(id, check.url ?? "")) : "";
+  const parts = [`The "${check.name}" check failed on pull request #${pr}. Find the cause and fix it.`, check.url, log && `The end of its log:\n\n${log}`];
+  await sendMessage(id, parts.filter(Boolean).join("\n\n"));
+}
+
+/** Sends a review comment to the agent. */
+export async function fixComment(id: string, pr: number, comment: PullRequestComment) {
+  const where = comment.path ? ` on ${comment.path}${comment.line ? `:${comment.line}` : ""}` : "";
+  await sendMessage(id, `Address this review comment from ${comment.author} on pull request #${pr}${where}:\n\n${comment.body}`);
 }
 
 export const listSources = () => attempt(() => getRunner().listSources());

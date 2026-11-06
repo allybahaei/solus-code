@@ -1,6 +1,6 @@
 import type { Diff, DiffFile } from "./diff";
 import type { AgentMessage, RunnerEvent } from "./events";
-import type { AgentKind, CreateTaskInput, Task, TaskSources } from "./task";
+import type { AgentKind, CreateTaskInput, PullRequestStatus, Task, TaskSources } from "./task";
 
 export type MergeStrategy = "merge" | "squash" | "rebase";
 
@@ -112,5 +112,13 @@ export interface Runner {
   merge(id: string, opts: MergeOptions): Promise<void>;
   openPullRequest(id: string, opts: PROptions): Promise<{ url: string }>;
   /** Returns an unsubscribe function. */
+  /** CI and review state from GitHub. Moves the task to merged if the PR has landed. */
+  getPullRequest(id: string): Promise<PullRequestStatus>;
+  /** Commits the task's work and pushes it to its pull request. */
+  pushPullRequest(id: string): Promise<void>;
+  /** Pushes any new work, then merges the pull request on GitHub. */
+  mergePullRequest(id: string, strategy: MergeStrategy): Promise<void>;
+  /** The end of a failed check's log, or nothing if it isn't available. */
+  getCheckLog(id: string, url: string): Promise<string>;
   subscribe(listener: (event: RunnerEvent) => void): () => void;
 }

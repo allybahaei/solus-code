@@ -21,8 +21,7 @@ export function TaskHeader({ task }: { task: Task }) {
       <div className="min-w-0 flex-[1_1_16rem]">
         <h1 className="truncate text-sm font-medium">{title}</h1>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {/* The merged state also covers an opened PR, which may not be merged yet. */}
-          <StateLabel state={task.state} {...(task.pullRequest ? { label: "PR opened" } : {})} />
+          <StateLabel state={task.state} {...(task.pullRequest && task.state === "ready_for_review" ? { label: "PR opened" } : {})} />
           <span className="inline-flex items-center gap-1.5">
             <AgentIcon agent={task.agent} className="size-3.5" />
             {AGENTS[task.agent].label}
@@ -65,17 +64,18 @@ function ViewSwitch({ task }: { task: Task }) {
   const view = useReview((s) => s.view[task.id] ?? "chat");
   const setView = useReview((s) => s.setView);
   const comments = useReview((s) => reviewOf(s, task.id).comments.length);
-  if (task.changes.files === 0) return null;
+  if (task.changes.files === 0 && !task.pullRequest) return null;
+  const views = task.pullRequest ? (["chat", "review", "checks"] as const) : (["chat", "review"] as const);
   return (
     <div role="tablist" aria-label="View" className="hidden rounded-md border p-0.5 text-xs lg:flex">
-      {(["chat", "review"] as const).map((v) => (
+      {views.map((v) => (
         <button
           key={v}
           type="button"
           role="tab"
           aria-selected={view === v}
           onClick={() => setView(task.id, v)}
-          title={v === "review" ? "Review the diff (R)" : "Back to the chat (Esc)"}
+          title={v === "review" ? "Review the diff (R)" : v === "checks" ? "CI and review comments" : "Back to the chat (Esc)"}
           className={cn(
             "rounded px-2.5 py-1 capitalize",
             view === v ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
@@ -103,7 +103,7 @@ function ViewSwitch({ task }: { task: Task }) {
 /** Deleting can't be undone, so it says what will go, in terms of this task. */
 function DeleteTask({ task }: { task: Task }) {
   const [open, setOpen] = useState(false);
-  const landed = task.state === "merged";
+  const landed = task.state === "merged" || !!task.pullRequest;
   return (
     <>
       <Button size="icon-sm" variant="ghost" onClick={() => setOpen(true)} aria-label="Delete task" title="Delete task">
@@ -158,6 +158,16 @@ function Actions({ task }: { task: Task }) {
         </Button>
       );
     case "ready_for_review":
+      if (task.pullRequest) {
+        return (
+          <Button size="sm" variant="ghost" asChild>
+            <a href={task.pullRequest.url} target="_blank" rel="noreferrer">
+              PR #{task.pullRequest.number}
+              <ArrowUpRight />
+            </a>
+          </Button>
+        );
+      }
       return (
         <>
           <Button size="sm" variant="outline" onClick={() => openMerge(task.id, "pr")} title="Open a pull request (P)">
@@ -176,14 +186,7 @@ function Actions({ task }: { task: Task }) {
         </>
       );
     case "merged":
-      return task.pullRequest ? (
-        <Button size="sm" variant="ghost" asChild>
-          <a href={task.pullRequest.url} target="_blank" rel="noreferrer">
-            PR #{task.pullRequest.number}
-            <ArrowUpRight />
-          </a>
-        </Button>
-      ) : (
+      return (
         <span className="text-xs text-muted-foreground">Merged into {task.mergedInto ?? task.baseBranch}</span>
       );
     default:

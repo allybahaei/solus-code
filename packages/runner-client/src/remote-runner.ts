@@ -12,6 +12,8 @@ import type {
   RunnerSnapshot,
   ServerMessage,
   SetupStatus,
+  MergeStrategy,
+  PullRequestStatus,
   Task,
   TaskSources,
 } from "@solus/core";
@@ -81,6 +83,10 @@ export class RemoteRunner implements Runner {
   getMessages = (id: string) => this.call<AgentMessage[]>("getMessages", id);
   createTask = (input: CreateTaskInput) => this.call<Task>("createTask", input);
   listSources = () => this.call<TaskSources>("listSources");
+  getPullRequest = (id: string) => this.call<PullRequestStatus>("getPullRequest", id);
+  pushPullRequest = (id: string) => this.run("pushPullRequest", id);
+  mergePullRequest = (id: string, strategy: MergeStrategy) => this.run("mergePullRequest", id, strategy);
+  getCheckLog = (id: string, url: string) => this.call<string>("getCheckLog", id, url);
   attachFile = (id: string, name: string, base64: string) => this.call<string>("attachFile", id, name, base64);
   startTask = (id: string) => this.run("startTask", id);
   sendMessage = (id: string, message: string, opts?: { agent?: AgentKind }) =>

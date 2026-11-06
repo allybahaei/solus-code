@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { TaskSource, TaskSources } from "@solus/core";
+import type { PullRequestRef, TaskSource, TaskSources } from "@solus/core";
 import { branchExists, git } from "./git";
 
 const exec = promisify(execFile);
 
-async function ghJson<T>(gh: string, cwd: string, args: string[]): Promise<T> {
+export async function ghJson<T>(gh: string, cwd: string, args: string[]): Promise<T> {
   try {
     const { stdout } = await exec(gh, args, { cwd, timeout: 20_000 });
     return JSON.parse(stdout) as T;
@@ -35,6 +35,7 @@ export interface ResolvedSource {
   branch?: string;
   /** The branch for a new task to start from, when it isn't the repo's default. */
   baseBranch?: string;
+  pullRequest?: PullRequestRef;
 }
 
 /** Turns a source into what a task needs. Fetches a pull request's branch if it has to. */
@@ -46,8 +47,8 @@ export async function resolveSource(root: string, gh: string, source: TaskSource
       return { title: `Work on ${source.branch}`, prompt: `Continue the work on the branch ${source.branch}.`, branch: source.branch };
     }
     case "pr": {
-      const pr = await ghJson<{ title: string; body: string; baseRefName: string; url: string }>(gh, root, [
-        "pr", "view", String(source.number), "--json", "title,body,baseRefName,url",
+      const pr = await ghJson<{ title: string; body: string; baseRefName: string; headRefName: string; isCrossRepository: boolean; url: string }>(gh, root, [
+        "pr", "view", String(source.number), "--json", "title,body,baseRefName,headRefName,isCrossRepository,url",
       ]);
       const branch = `solus/pr-${source.number}`;
       if (await branchExists(root, branch)) throw new Error(`There's already a task or branch for PR #${source.number}.`);
@@ -57,6 +58,12 @@ export async function resolveSource(root: string, gh: string, source: TaskSource
         prompt: `You're picking up pull request #${source.number}: ${pr.title}\n${pr.url}\n\n${pr.body}`.trim(),
         branch,
         baseBranch: pr.baseRefName,
+        pullRequest: {
+          url: pr.url,
+          number: source.number,
+          head: pr.headRefName,
+          ...(pr.isCrossRepository ? { fork: true } : {}),
+        },
       };
     }
     case "issue": {

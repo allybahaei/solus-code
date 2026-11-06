@@ -12,6 +12,8 @@ export interface ReviewComment {
   text: string;
 }
 
+export type TaskView = "chat" | "review" | "checks";
+
 export interface TaskReview {
   comments: ReviewComment[];
   /** Paths ticked as viewed. */
@@ -25,7 +27,7 @@ export type DiffMode = "unified" | "split";
 
 interface ReviewState {
   /** Whether each task shows its chat or its review in the middle pane. */
-  view: Record<string, "chat" | "review">;
+  view: Record<string, TaskView>;
   reviews: Record<string, TaskReview>;
   diffMode: DiffMode;
   /** A file the review should scroll to, set from the changes list. */
@@ -35,7 +37,7 @@ interface ReviewState {
   merge: { taskId: string; mode: MergeMode } | null;
   lastMergeMode: MergeMode;
 
-  setView: (taskId: string, view: "chat" | "review") => void;
+  setView: (taskId: string, view: TaskView) => void;
   showFile: (taskId: string, path: string) => void;
   setInView: (path: string | null) => void;
   addComment: (taskId: string, comment: Omit<ReviewComment, "id">) => void;

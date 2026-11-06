@@ -107,6 +107,9 @@ importers:
       '@solus/core':
         specifier: workspace:*
         version: link:../core
+      '@solus/runner-local':
+        specifier: workspace:*
+        version: link:../runner-local
       '@solus/runner-mock':
         specifier: workspace:*
         version: link:../runner-mock
@@ -132,6 +135,16 @@ importers:
       '@solus/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/runner-local:
+    dependencies:
+      '@solus/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22
+        version: 22.20.5
 
   packages/runner-mock:
     dependencies:

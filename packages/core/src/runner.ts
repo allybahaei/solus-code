@@ -19,8 +19,17 @@ export interface PROptions {
   draft?: boolean;
 }
 
+export interface RepoInfo {
+  /** owner/name, or the folder name when there's no remote. */
+  name: string;
+  /** Local path, for runners that have one. */
+  path?: string;
+  defaultBranch: string;
+}
+
 /** Everything a UI needs to draw, taken at one instant. */
 export interface RunnerSnapshot {
+  repo: RepoInfo;
   tasks: Task[];
   messages: Record<string, AgentMessage[]>;
   diffs: Record<string, DiffFile[]>;

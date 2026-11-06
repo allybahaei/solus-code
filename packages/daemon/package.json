@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@solus/core": "workspace:*",
+    "@solus/runner-local": "workspace:*",
     "@solus/runner-mock": "workspace:*",
     "ws": "^8.22.1"
   },

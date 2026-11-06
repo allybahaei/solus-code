@@ -7,7 +7,6 @@ import { AgentIcon } from "@/components/agent-picker";
 import { sidebarSections } from "@/lib/groups";
 import { ago } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
-import { REPO } from "@/lib/runner";
 import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +24,7 @@ export const SEARCH_ID = "sidebar-search";
 
 export function Sidebar() {
   const tasks = useSolus((s) => s.tasks);
+  const repo = useSolus((s) => s.repo);
   const status = useSolus((s) => s.status);
   const pinned = useSolus((s) => s.pinned);
   const query = useSolus((s) => s.query);
@@ -57,7 +57,7 @@ export function Sidebar() {
         )}
 
         {(workspaces.length > 0 || merged.length > 0) && (
-          <Section label="My workspaces" hint={REPO}>
+          <Section label="My workspaces" hint={repo?.name}>
             {workspaces.map((t) => (
               <WorkspaceRow key={t.id} task={t} />
             ))}

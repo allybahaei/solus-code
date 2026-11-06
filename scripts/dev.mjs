@@ -1,11 +1,14 @@
 // `pnpm dev`: the daemon and the web app together, sharing a fresh token.
-// Flags: --port <web port>, --daemon-port <port>, --autopilot, --speed <n>
+// Flags: --repo <path> (real git, fake agent), --port <web port>, --daemon-port <port>,
+// and for the mock: --autopilot, --speed <n>
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 const { values } = parseArgs({
   options: {
+    repo: { type: "string" },
     port: { type: "string", default: "3000" },
     "daemon-port": { type: "string", default: "4317" },
     autopilot: { type: "boolean", default: false },
@@ -22,7 +25,12 @@ const env = {
   NEXT_PUBLIC_SOLUS_DAEMON_URL: `ws://127.0.0.1:${daemonPort}`,
 };
 
-const daemonArgs = ["--port", daemonPort, "--speed", values.speed, ...(values.autopilot ? ["--autopilot"] : [])];
+const daemonArgs = [
+  "--port", daemonPort,
+  "--speed", values.speed,
+  ...(values.autopilot ? ["--autopilot"] : []),
+  ...(values.repo ? ["--repo", resolve(values.repo)] : []),
+];
 const children = [
   spawn("pnpm", ["--filter", "@solus/daemon", "dev", ...daemonArgs], { env, stdio: "inherit" }),
   spawn("pnpm", ["--filter", "web", "dev", "--port", values.port], { env, stdio: "inherit" }),

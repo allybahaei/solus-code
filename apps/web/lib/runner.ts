@@ -2,12 +2,8 @@
 
 import type { Runner } from "@solus/core";
 import { RemoteRunner } from "@solus/runner-client";
-import { MOCK_BASE_BRANCH, MOCK_REPO, createMockRunner } from "@solus/runner-mock";
+import { createMockRunner } from "@solus/runner-mock";
 import type { ConnectionSource } from "./store";
-
-/** The repo the prototype shows. Comes from the runner once there is a real one. */
-export const REPO = MOCK_REPO;
-export const BASE_BRANCH = MOCK_BASE_BRANCH;
 
 const DAEMON_URL = process.env.NEXT_PUBLIC_SOLUS_DAEMON_URL;
 const DAEMON_TOKEN = process.env.NEXT_PUBLIC_SOLUS_TOKEN ?? "";

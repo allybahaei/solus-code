@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { AgentMessage, DiffFile, Runner, RunnerSnapshot, Task } from "@solus/core";
+import type { AgentMessage, DiffFile, RepoInfo, Runner, RunnerSnapshot, Task } from "@solus/core";
 import { navOrder } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
@@ -12,6 +12,7 @@ interface SolusState {
   error: string | null;
   /** False while the connection to the daemon is down. */
   connected: boolean;
+  repo: RepoInfo | null;
   tasks: Record<string, Task>;
   messages: Record<string, AgentMessage[]>;
   diffs: Record<string, DiffFile[]>;
@@ -100,6 +101,7 @@ export const useSolus = create<SolusState>()((set, get) => ({
   status: "connecting",
   error: null,
   connected: true,
+  repo: null,
   tasks: {},
   messages: {},
   diffs: {},
@@ -197,6 +199,7 @@ function applySnapshot(snapshot: RunnerSnapshot) {
     return {
       status: "ready",
       error: null,
+      repo: snapshot.repo,
       pinned: loadPinned(),
       renames: loadRenames(),
       // Everything that happened before you opened the app counts as seen.

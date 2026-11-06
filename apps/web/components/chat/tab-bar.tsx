@@ -12,7 +12,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { REPO } from "@/lib/runner";
 import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +22,7 @@ const iconButton =
 export function TabBar() {
   const openTabs = useSolus((s) => s.openTabs);
   const tasks = useSolus((s) => s.tasks);
+  const repo = useSolus((s) => s.repo);
   const setShowList = useSolus((s) => s.setShowList);
   const setNewTaskOpen = useSolus((s) => s.setNewTaskOpen);
   const anyWorking = Object.values(tasks).some((t) => t.state === "working");
@@ -44,7 +44,7 @@ export function TabBar() {
           aria-label={anyWorking ? "Agents working" : "No agents working"}
           className={cn("size-4", anyWorking ? "animate-pulse text-state-review" : "text-muted-foreground")}
         />
-        <span className="max-w-48 truncate text-[15px] font-semibold tracking-tight">{REPO}</span>
+        <span className="max-w-48 truncate text-[15px] font-semibold tracking-tight">{repo?.name}</span>
       </div>
 
       <div

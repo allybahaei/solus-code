@@ -1,22 +1,32 @@
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
+import { FakeAgent, LocalRunner } from "@solus/runner-local";
 import { createMockRunner } from "@solus/runner-mock";
 import { startDaemon } from "./server";
 
 const { values } = parseArgs({
   options: {
     port: { type: "string", default: "4317" },
+    /** A real repo. Without it the daemon serves the mock. */
+    repo: { type: "string" },
     autopilot: { type: "boolean", default: false },
     speed: { type: "string", default: "1" },
   },
 });
 
 const token = process.env.SOLUS_TOKEN ?? randomBytes(24).toString("hex");
-const runner = createMockRunner({ autopilot: values.autopilot, speed: Number(values.speed) || 1 });
 
 try {
+  const runner = values.repo
+    ? await LocalRunner.open({
+        repoPath: values.repo,
+        adapterFor: () => new FakeAgent(),
+        ...(process.env.SOLUS_HOME ? { home: process.env.SOLUS_HOME } : {}),
+      })
+    : createMockRunner({ autopilot: values.autopilot, speed: Number(values.speed) || 1 });
+
   const daemon = await startDaemon({ runner, token, port: Number(values.port) });
-  console.log(`Solus daemon on 127.0.0.1:${daemon.port} (mock runner)`);
+  console.log(`Solus daemon on 127.0.0.1:${daemon.port} (${values.repo ? `${values.repo}, fake agent` : "mock runner"})`);
 
   const stop = () => {
     runner.dispose();
@@ -26,6 +36,6 @@ try {
   process.on("SIGTERM", stop);
 } catch (err) {
   const inUse = (err as NodeJS.ErrnoException).code === "EADDRINUSE";
-  console.error(inUse ? `Port ${values.port} is already in use. Is another Solus daemon running?` : err);
+  console.error(inUse ? `Port ${values.port} is already in use. Is another Solus daemon running?` : (err as Error).message);
   process.exit(1);
 }

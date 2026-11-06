@@ -15,11 +15,11 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { createAndStart } from "@/lib/actions";
-import { BASE_BRANCH, REPO } from "@/lib/runner";
 import { useSolus } from "@/lib/store";
 
 export function NewTaskDialog() {
   const open = useSolus((s) => s.newTaskOpen);
+  const repo = useSolus((s) => s.repo);
   const setOpen = useSolus((s) => s.setNewTaskOpen);
   const [prompt, setPrompt] = useState("");
   // Kept between tasks, so the last agent you picked stays the default.
@@ -40,10 +40,10 @@ export function NewTaskDialog() {
         <DialogHeader>
           <DialogTitle>New task</DialogTitle>
           <DialogDescription className="flex items-center gap-1.5">
-            New worktree on {REPO}, branched from
+            New worktree on {repo?.name}, branched from
             <span className="inline-flex items-center gap-1 font-mono text-xs">
               <GitBranch className="size-3" />
-              {BASE_BRANCH}
+              {repo?.defaultBranch}
             </span>
           </DialogDescription>
         </DialogHeader>

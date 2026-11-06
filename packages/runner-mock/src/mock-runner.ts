@@ -108,6 +108,7 @@ export class MockRunner implements Runner {
     const byTask = <T>(fn: (r: TaskRecord) => T) =>
       Object.fromEntries(records.map((r) => [r.task.id, structuredClone(fn(r))]));
     return {
+      repo: { name: MOCK_REPO, defaultBranch: MOCK_BASE_BRANCH },
       tasks: records.map((r) => structuredClone(r.task)),
       messages: byTask((r) => r.messages),
       diffs: byTask((r) => [...r.files.values()]),

@@ -1,7 +1,7 @@
 "use client";
 
 import type { AgentKind, MergeOptions, PROptions } from "@solus/core";
-import { getRunner, BASE_BRANCH, REPO } from "./runner";
+import { getRunner } from "./runner";
 import { useSolus } from "./store";
 
 /** Runs a runner call; a failure shows as a notice instead of throwing. */
@@ -53,8 +53,10 @@ export async function openPullRequest(id: string, opts: PROptions): Promise<stri
 export async function createAndStart(prompt: string, agent: AgentKind) {
   const firstLine = prompt.trim().split("\n")[0] ?? "";
   const title = firstLine.length > 60 ? `${firstLine.slice(0, 57).trimEnd()}…` : firstLine;
+  const { repo } = useSolus.getState();
+  if (!repo) return;
   const task = await attempt(() =>
-    getRunner().createTask({ repo: REPO, title, prompt: prompt.trim(), baseBranch: BASE_BRANCH, agent }),
+    getRunner().createTask({ repo: repo.name, title, prompt: prompt.trim(), baseBranch: repo.defaultBranch, agent }),
   );
   if (!task) return;
   useSolus.getState().open(task.id);

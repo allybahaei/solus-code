@@ -1,6 +1,6 @@
 import type { Diff, DiffFile } from "./diff";
 import type { AgentMessage, RunnerEvent } from "./events";
-import type { AgentKind, CreateTaskInput, PullRequestStatus, Task, TaskSources } from "./task";
+import type { AgentKind, Chat, CreateTaskInput, PullRequestStatus, Task, TaskSources } from "./task";
 
 export type MergeStrategy = "merge" | "squash" | "rebase";
 
@@ -94,10 +94,14 @@ export interface Runner {
    * Reply to a question, nudge a stuck task, or request changes after review.
    * Passing `agent` hands the task to a different agent from this message on.
    */
-  sendMessage(id: string, message: string, opts?: { agent?: AgentKind }): Promise<void>;
+  /** Goes to the main chat unless opts.chat says otherwise. */
+  sendMessage(id: string, message: string, opts?: { agent?: AgentKind; chat?: string }): Promise<void>;
+  /** Adds a conversation in the task's worktree. */
+  createChat(id: string, agent?: AgentKind): Promise<Chat>;
   /** Answers the task's pending approval. To deny with a reason, use sendMessage. */
   answerApproval(id: string, approvalId: string, allow: boolean): Promise<void>;
-  stopTask(id: string): Promise<void>;
+  /** Stops one chat, or every running chat if none is named. */
+  stopTask(id: string, chat?: string): Promise<void>;
   /** Merges `target` into the task's branch and has the agent resolve what conflicts. */
   resolveConflicts(id: string, target: string): Promise<void>;
   /** Stops the task, commits its work, and frees its worktree. Keeps the branch and history. */

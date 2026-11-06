@@ -14,12 +14,13 @@ import { TerminalView } from "@/components/side/terminal";
 import { SEARCH_ID, Sidebar } from "@/components/sidebar";
 import { MergeDialog } from "@/components/review/merge-dialog";
 import { ChecksView } from "@/components/checks/checks-view";
+import { MAIN_CHAT } from "@solus/core";
 import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/review-view";
 import { startTask } from "@/lib/actions";
 import { loadReviewPrefs, useReview } from "@/lib/review-store";
 import { useMediaQuery } from "@/lib/hooks";
 import { getConnection, getRunner } from "@/lib/runner";
-import { connectRunner, useSolus, type CenterView } from "@/lib/store";
+import { activeChatId, connectRunner, taskInChat, useSolus, type CenterView } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const EMPTY: never[] = [];
@@ -58,7 +59,11 @@ export function AppShell() {
 
 function ActiveTask({ wide }: { wide: boolean }) {
   const task = useSolus((s) => (s.activeId ? s.tasks[s.activeId] : undefined));
-  const messages = useSolus((s) => (s.activeId ? s.messages[s.activeId] : undefined)) ?? EMPTY;
+  const allMessages = useSolus((s) => (s.activeId ? s.messages[s.activeId] : undefined)) ?? EMPTY;
+  const chatId = useSolus((s) => {
+    const t = s.activeId ? s.tasks[s.activeId] : undefined;
+    return t ? activeChatId(s, t) : MAIN_CHAT;
+  });
   const files = useSolus((s) => (s.activeId ? s.diffs[s.activeId] : undefined)) ?? EMPTY;
   const status = useSolus((s) => s.status);
   const error = useSolus((s) => s.error);
@@ -75,6 +80,8 @@ function ActiveTask({ wide }: { wide: boolean }) {
   }
 
   const current: CenterView = wide ? "chat" : view;
+  const inChat = taskInChat(task, chatId);
+  const messages = allMessages.filter((m) => (m.chatId ?? MAIN_CHAT) === chatId);
   return (
     <>
       <TaskHeader task={task} />
@@ -105,8 +112,8 @@ function ActiveTask({ wide }: { wide: boolean }) {
           <ReviewView key={task.id} task={task} files={files} narrow={false} />
         ) : (
           <>
-            <Transcript task={task} messages={messages} />
-            <Composer key={task.id} task={task} />
+            <Transcript key={chatId} task={inChat} messages={messages} newChat={chatId !== MAIN_CHAT} />
+            <Composer key={`${task.id}/${chatId}`} task={inChat} chatId={chatId} />
           </>
         ))}
       {current === "changes" && <ReviewView key={task.id} task={task} files={files} narrow />}
@@ -241,7 +248,7 @@ function useKeyboard() {
             s.cycleTab(-1);
             return true;
           case "x":
-            if (s.activeId) s.closeTab(s.activeId);
+            if (task) s.closeChat(task.id, activeChatId(s, task));
             return true;
           case "n":
             s.setNewTaskOpen(true);

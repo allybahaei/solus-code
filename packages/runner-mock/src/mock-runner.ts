@@ -13,6 +13,7 @@ import {
   type RunnerEvent,
   type RunnerSnapshot,
   type SetupStatus,
+  type Chat,
   type PullRequestStatus,
   type Task,
   type TaskSources,
@@ -160,6 +161,10 @@ export class MockRunner implements Runner {
     this.records.set(task.id, this.newRecord(task, undefined));
     this.emit({ type: "task.created", taskId: task.id, at: now, task: structuredClone(task) });
     return structuredClone(task);
+  }
+
+  async createChat(): Promise<Chat> {
+    throw new Error("Extra chats need a real repo. Start Solus with --repo.");
   }
 
   async listSources(): Promise<TaskSources> {

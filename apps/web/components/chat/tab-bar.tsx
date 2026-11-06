@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AudioLines, ChevronLeft, History, Link2, PanelRight, Pencil, Plus, X } from "lucide-react";
-import type { AgentKind, Task } from "@solus/core";
+import { chatsOf, type Chat, type Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { StateDot } from "@/components/state-dot";
 import {
@@ -12,19 +12,19 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { displayTitle, useSolus } from "@/lib/store";
+import { newChat } from "@/lib/actions";
+import { activeChatId, chatTitle, displayTitle, useSolus, visibleChats } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const iconButton =
   "grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-foreground [&_svg]:size-[18px]";
 
-/** Repo title, workspace tabs, and workspace actions. */
+/** The workspace's name, its chat tabs, and workspace actions. */
 export function TabBar() {
-  const openTabs = useSolus((s) => s.openTabs);
+  const task = useSolus((s) => (s.activeId ? s.tasks[s.activeId] : undefined));
   const tasks = useSolus((s) => s.tasks);
   const repo = useSolus((s) => s.repo);
   const setShowList = useSolus((s) => s.setShowList);
-  const setNewTaskOpen = useSolus((s) => s.setNewTaskOpen);
   const anyWorking = Object.values(tasks).some((t) => t.state === "working");
 
   return (
@@ -38,90 +38,123 @@ export function TabBar() {
         <ChevronLeft />
       </button>
 
-      {/* The repo name gives way to the tabs on phones. */}
-      <div className="hidden shrink-0 items-center gap-2 pr-3 pl-2 md:flex md:pl-4">
+      {/* The name gives way to the tabs on phones. */}
+      <div className="hidden max-w-[35%] min-w-0 shrink-0 items-center gap-2 pr-3 pl-2 md:flex md:pl-4">
         <AudioLines
           aria-label={anyWorking ? "Agents working" : "No agents working"}
-          className={cn("size-4", anyWorking ? "animate-pulse text-state-review" : "text-muted-foreground")}
+          className={cn("size-4 shrink-0", anyWorking ? "animate-pulse text-state-review" : "text-muted-foreground")}
         />
-        <span className="max-w-48 truncate text-[0.9375rem] font-semibold tracking-tight">{repo?.name}</span>
+        {task ? <WorkspaceName task={task} /> : <span className="max-w-48 truncate text-[0.9375rem] font-semibold tracking-tight">{repo?.name}</span>}
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Open workspaces"
-        className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {openTabs.map((id) => {
-          const task = tasks[id];
-          return task ? <Tab key={id} task={task} /> : null;
-        })}
-        <button
-          type="button"
-          className={cn(iconButton, "my-auto ml-1")}
-          onClick={() => setNewTaskOpen(true)}
-          aria-label="New task"
-          title="New task (N)"
-        >
-          <Plus />
-        </button>
-      </div>
+      {task ? <ChatTabs task={task} /> : <div className="flex-1" />}
 
       <div className="flex shrink-0 items-center gap-0.5">
-        <HistoryMenu />
+        {task && <HistoryMenu task={task} />}
         <CopyLinkButton />
-        <AgentStack />
+        {task && <AgentStack task={task} />}
         <PaneToggle />
       </div>
     </div>
   );
 }
 
-function Tab({ task }: { task: Task }) {
-  const active = useSolus((s) => s.activeId === task.id);
+function WorkspaceName({ task }: { task: Task }) {
   const title = useSolus((s) => displayTitle(s, task));
-  const open = useSolus((s) => s.open);
-  const closeTab = useSolus((s) => s.closeTab);
   const rename = useSolus((s) => s.rename);
   const [editing, setEditing] = useState(false);
+  return editing ? (
+    <NameInput label="Workspace name" value={title} onDone={(v) => (rename(task.id, v), setEditing(false))} onCancel={() => setEditing(false)} />
+  ) : (
+    <button
+      type="button"
+      onDoubleClick={() => setEditing(true)}
+      title={`${title} · double-click to rename`}
+      className="min-w-0 truncate text-[0.9375rem] font-semibold tracking-tight outline-none focus-visible:underline"
+    >
+      {title}
+    </button>
+  );
+}
+
+function NameInput({ label, value, onDone, onCancel }: { label: string; value: string; onDone: (v: string) => void; onCancel: () => void }) {
+  return (
+    <input
+      autoFocus
+      defaultValue={value}
+      aria-label={label}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={(e) => onDone(e.currentTarget.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") onCancel();
+      }}
+      className="w-40 rounded bg-accent px-1.5 py-0.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    />
+  );
+}
+
+/** A tab per conversation. They all work in this task's one worktree. */
+function ChatTabs({ task }: { task: Task }) {
+  const closed = useSolus((s) => s.closedChats[task.id]);
+  const activeId = useSolus((s) => activeChatId(s, task));
+  const chats = visibleChats({ closedChats: closed ? { [task.id]: closed } : {} }, task);
+  const canAdd = task.state !== "idle" && task.state !== "merged" && !task.archivedAt;
+  const agent = chatsOf(task).find((c) => c.id === activeId)?.agent ?? task.agent;
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Chats in this workspace"
+      className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {chats.map((c) => (
+        <ChatTab key={c.id} task={task} chat={c} active={c.id === activeId} closable={chats.length > 1} />
+      ))}
+      {canAdd && (
+        <button
+          type="button"
+          className={cn(iconButton, "my-auto ml-1")}
+          onClick={() => void newChat(task.id, agent)}
+          aria-label="New chat"
+          title="New chat in this workspace"
+        >
+          <Plus />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ChatTab({ task, chat, active, closable }: { task: Task; chat: Chat; active: boolean; closable: boolean }) {
+  const title = useSolus((s) => chatTitle(s, task, chat));
+  const openChat = useSolus((s) => s.openChat);
+  const closeChat = useSolus((s) => s.closeChat);
+  const rename = useSolus((s) => s.rename);
+  const [editing, setEditing] = useState(false);
+  const key = `${task.id}/${chat.id}`;
 
   return (
     <div
       className={cn(
-        "group relative flex max-w-56 min-w-28 shrink items-center gap-1.5 px-3 text-sm",
+        "group relative flex max-w-56 min-w-24 shrink-0 items-center gap-1.5 px-3 text-sm",
         active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
       )}
-      onAuxClick={(e) => e.button === 1 && closeTab(task.id)}
+      onAuxClick={(e) => e.button === 1 && closeChat(task.id, chat.id)}
     >
       {editing ? (
-        <input
-          autoFocus
-          defaultValue={title}
-          aria-label="Workspace name"
-          onFocus={(e) => e.currentTarget.select()}
-          onBlur={(e) => {
-            rename(task.id, e.currentTarget.value);
-            setEditing(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-            if (e.key === "Escape") setEditing(false);
-          }}
-          className="w-40 rounded bg-accent px-1.5 py-0.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
+        <NameInput label="Chat name" value={title} onDone={(v) => (rename(key, v), setEditing(false))} onCancel={() => setEditing(false)} />
       ) : (
         <button
           type="button"
           role="tab"
           aria-selected={active}
-          onClick={() => open(task.id)}
+          onClick={() => openChat(task.id, chat.id)}
           onDoubleClick={() => setEditing(true)}
           className="flex min-w-0 items-center gap-2 py-3 outline-none focus-visible:underline"
           title={`${title} · double-click to rename, middle-click to close`}
         >
-          {task.state !== "idle" && task.state !== "ready_for_review" && task.state !== "merged" && (
-            <StateDot state={task.state} />
-          )}
+          {chat.state !== "idle" && chat.state !== "ready_for_review" && <StateDot state={chat.state} />}
           <span className="truncate">{title}</span>
         </button>
       )}
@@ -138,10 +171,10 @@ function Tab({ task }: { task: Task }) {
           <Pencil className="size-3.5" />
         </button>
       )}
-      {!editing && (
+      {!editing && closable && (
         <button
           type="button"
-          onClick={() => closeTab(task.id)}
+          onClick={() => closeChat(task.id, chat.id)}
           aria-label={`Close ${title}`}
           title="Close (X)"
           className="-mr-1 rounded p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
@@ -154,27 +187,27 @@ function Tab({ task }: { task: Task }) {
   );
 }
 
-function HistoryMenu() {
-  const closedTabs = useSolus((s) => s.closedTabs);
-  const tasks = useSolus((s) => s.tasks);
+/** Closed chat tabs in this workspace. Closing a tab keeps the conversation. */
+function HistoryMenu({ task }: { task: Task }) {
+  const closedIds = useSolus((s) => s.closedChats[task.id]);
   const renames = useSolus((s) => s.renames);
-  const open = useSolus((s) => s.open);
-  const closed = closedTabs.map((id) => tasks[id]).filter((t): t is Task => !!t);
+  const openChat = useSolus((s) => s.openChat);
+  const closed = (closedIds ?? []).flatMap((id) => chatsOf(task).filter((c) => c.id === id));
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={iconButton} aria-label="Recently closed tabs" title="Recently closed">
+      <DropdownMenuTrigger className={iconButton} aria-label="Closed chats" title="Closed chats">
         <History />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recently closed</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Closed chats</DropdownMenuLabel>
         {closed.length === 0 ? (
           <p className="px-2 pb-2 text-sm text-muted-foreground">Nothing closed yet.</p>
         ) : (
-          closed.map((t) => (
-            <DropdownMenuItem key={t.id} onSelect={() => open(t.id)} className="gap-2">
-              <StateDot state={t.state} />
-              <span className="truncate">{displayTitle({ renames }, t)}</span>
+          closed.map((c) => (
+            <DropdownMenuItem key={c.id} onSelect={() => openChat(task.id, c.id)} className="gap-2">
+              <StateDot state={c.state} />
+              <span className="truncate">{chatTitle({ renames }, task, c)}</span>
             </DropdownMenuItem>
           ))
         )}
@@ -208,14 +241,9 @@ function CopyLinkButton() {
   );
 }
 
-/** The agents running in open workspaces, overlapped like avatars. */
-function AgentStack() {
-  const tasks = useSolus((s) => s.tasks);
-  const openTabs = useSolus((s) => s.openTabs);
-  const agents = [
-    ...new Set(openTabs.map((id) => tasks[id]?.agent).filter((a): a is AgentKind => !!a)),
-  ];
-  if (agents.length === 0) return null;
+/** The agents in this workspace's chats, overlapped like avatars. */
+function AgentStack({ task }: { task: Task }) {
+  const agents = [...new Set(chatsOf(task).map((c) => c.agent))];
   return (
     <div
       className="mx-1.5 flex items-center -space-x-1.5"

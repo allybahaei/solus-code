@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ArchiveRestore, ArrowUp, CircleAlert, MessageCircleQuestion, Paperclip, Play, ShieldQuestion, X } from "lucide-react";
-import type { AgentKind, Task } from "@solus/core";
+import { MAIN_CHAT, type AgentKind, type Task } from "@solus/core";
 import { AgentPicker } from "@/components/agent-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +11,7 @@ import { useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const PLACEHOLDER: Record<Task["state"], string> = {
-  idle: "",
+  idle: "What should this chat work on?",
   working: "Add guidance while the agent works…",
   needs_input: "Answer the agent…",
   stuck: "Nudge the agent: what should it try?",
@@ -24,7 +24,7 @@ export const COMPOSER_ID = "composer";
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 /** Attention banner (question or error) plus the reply box. */
-export function Composer({ task }: { task: Task }) {
+export function Composer({ task, chatId }: { task: Task; chatId: string }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const text = drafts[task.id] ?? "";
   const setText = (v: string) => setDrafts((d) => ({ ...d, [task.id]: v }));
@@ -57,7 +57,7 @@ export function Composer({ task }: { task: Task }) {
     const note = attached.length > 0 ? `Attached files, in this worktree:\n${attached.map((p) => `- ${p}`).join("\n")}` : "";
     setText("");
     setAttached([]);
-    void sendMessage(task.id, [typed, note].filter(Boolean).join("\n\n"), agent);
+    void sendMessage(task.id, [typed, note].filter(Boolean).join("\n\n"), agent, chatId);
   };
 
   if (task.archivedAt) {
@@ -103,7 +103,7 @@ export function Composer({ task }: { task: Task }) {
           </Banner>
         )}
 
-        {task.state === "idle" ? (
+        {task.state === "idle" && chatId === MAIN_CHAT ? (
           <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3">
             <span className="text-sm text-muted-foreground">The agent hasn&apos;t started.</span>
             <Button size="sm" onClick={() => startTask(task.id)}>

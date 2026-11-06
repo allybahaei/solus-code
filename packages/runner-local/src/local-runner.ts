@@ -3,7 +3,10 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import {
+  MAIN_CHAT,
   assertTransition,
+  chatsOf,
+  leadChat,
   diffStats,
   type AgentKind,
   type AgentMessage,
@@ -18,6 +21,7 @@ import {
   type RunnerEvent,
   type RunnerSnapshot,
   type SetupStatus,
+  type Chat,
   type MergeStrategy,
   type PullRequestStatus,
   type Task,
@@ -55,28 +59,45 @@ export interface LocalRunnerOptions {
   commands?: SetupCommands;
 }
 
-interface Rec extends StoredTask {
-  messages: AgentMessage[];
+/** One chat's live state. The chat itself lives in task.chats. */
+interface Run {
+  chat: Chat;
+  session?: AgentSession;
+  agentSession?: string;
   /** The agent message being streamed, by the adapter's id. */
   streaming: Map<string, AgentMessage>;
+  /** Bumped to abandon a launch that is still preparing. */
+  launch: number;
+  /** The launch in progress, which may be creating the worktree. */
+  launching?: Promise<void>;
+  /** What the agent was last started with, in case it has to start over. */
+  lastMessage?: string;
+}
+
+interface Rec extends StoredTask {
+  messages: AgentMessage[];
+  runs: Map<string, Run>;
   terminal: string[];
   files: DiffFile[];
-  session?: AgentSession;
   shell?: WorkspaceShell;
   action?: RunningAction;
   runOutput: string[];
   /** The terminal's size, for when the shell starts. */
   size: ShellSize;
-  /** Bumped to abandon a launch that is still preparing. */
-  launch: number;
   abort?: AbortController;
-  /** The launch in progress, which may be creating the worktree. */
-  launching?: Promise<void>;
-  /** What the agent was last started with, in case it has to start over. */
-  lastMessage?: string;
+  /** Worktree and setup, shared by every chat that starts while they run. */
+  preparing?: Promise<void>;
   /** Agent events for this task, handled strictly in order. */
   queue: Promise<void>;
 }
+
+/** What a chat is called until its first message names it. */
+const NEW_CHAT = "New chat";
+
+const titleFrom = (message: string) => {
+  const line = message.trim().split("\n")[0] ?? "";
+  return line.length > 40 ? `${line.slice(0, 37).trimEnd()}…` : line || NEW_CHAT;
+};
 
 /** Where attached files go. Inside the worktree so agents can read them, but never committed. */
 const ATTACHMENTS = ".solus-attachments";
@@ -135,11 +156,8 @@ export class LocalRunner implements Runner {
   /** Stops every agent. Tasks keep their saved state. */
   dispose(): void {
     for (const rec of this.records.values()) {
-      rec.launch++;
       rec.abort?.abort();
-      rec.session?.stop();
-      rec.shell?.kill();
-      rec.action?.stop();
+      this.endSession(rec);
     }
     this.listeners.clear();
     this.store.unlock();
@@ -216,6 +234,7 @@ export class LocalRunner implements Runner {
       baseBranch: source?.baseBranch ?? input.baseBranch,
       ...(source?.pullRequest ? { pullRequest: source.pullRequest } : {}),
       agent: input.agent ?? "claude-code",
+      chats: [{ id: MAIN_CHAT, title: "Chat", agent: input.agent ?? "claude-code", state: "idle", createdAt: now }],
       state: "idle",
       changes: { files: 0, additions: 0, deletions: 0 },
       createdAt: now,
@@ -232,47 +251,78 @@ export class LocalRunner implements Runner {
     const rec = this.get(id);
     this.requireActive(rec);
     if (rec.task.state !== "idle") throw new Error(`Task ${id} is already started (${rec.task.state}).`);
+    const run = this.runOf(rec);
     this.addMessage(rec, "user", rec.task.prompt);
-    this.setState(rec, "working");
-    rec.launching = this.launch(rec, rec.task.prompt);
+    this.setChat(rec, run, "working");
+    run.launching = this.launch(rec, run, rec.task.prompt);
   }
 
-  async sendMessage(id: string, message: string, opts: { agent?: AgentKind } = {}): Promise<void> {
+  async createChat(id: string, agent?: AgentKind): Promise<Chat> {
+    const rec = this.get(id);
+    this.requireActive(rec);
+    if (rec.task.state === "idle") throw new Error("Start the task before adding a chat.");
+    if (rec.task.state === "merged") throw new Error(`Task ${id} is merged.`);
+    const chat: Chat = {
+      id: `chat_${randomBytes(6).toString("hex")}`,
+      title: NEW_CHAT,
+      agent: agent ?? rec.task.agent,
+      state: "idle",
+      createdAt: Date.now(),
+    };
+    rec.task.chats?.push(chat);
+    rec.runs.set(chat.id, this.newRun(chat));
+    this.updated(rec);
+    return structuredClone(chat);
+  }
+
+  async sendMessage(id: string, message: string, opts: { agent?: AgentKind; chat?: string } = {}): Promise<void> {
     const rec = this.get(id);
     this.requireActive(rec);
     const { state } = rec.task;
     if (state === "idle") throw new Error(`Start task ${id} before messaging it.`);
     if (state === "merged") throw new Error(`Task ${id} is merged.`);
+    const run = this.runOf(rec, opts.chat);
 
-    if (opts.agent && opts.agent !== rec.task.agent) {
+    if (opts.agent && opts.agent !== run.chat.agent) {
       // A different agent can't continue this one's session.
-      rec.task.agent = opts.agent;
-      rec.session?.stop();
-      delete rec.session;
-      delete rec.agentSession;
+      run.chat.agent = opts.agent;
+      if (run.chat.id === MAIN_CHAT) rec.task.agent = opts.agent;
+      run.session?.stop();
+      delete run.session;
+      delete run.agentSession;
     }
-    this.addMessage(rec, "user", message);
-    if (state !== "working") this.setState(rec, "working");
-    if (rec.session) rec.session.send(message);
-    else rec.launching = this.launch(rec, message);
+    if (run.chat.title === NEW_CHAT) run.chat.title = titleFrom(message);
+    this.addMessage(rec, "user", message, undefined, run);
+    if (run.chat.state !== "working") this.setChat(rec, run, "working");
+    if (run.session) run.session.send(message);
+    else run.launching = this.launch(rec, run, message);
   }
 
   async answerApproval(id: string, approvalId: string, allow: boolean): Promise<void> {
     const rec = this.get(id);
-    if (rec.task.approval?.id !== approvalId) throw new Error("That approval is no longer waiting.");
-    this.addMessage(rec, "tool", `${allow ? "Allowed" : "Denied"}: ${rec.task.approval.summary}`, rec.task.approval.tool);
-    this.setState(rec, "working");
-    rec.session?.approve(approvalId, allow);
+    const run = [...rec.runs.values()].find((r) => r.chat.approval?.id === approvalId);
+    const approval = run?.chat.approval;
+    if (!run || !approval) throw new Error("That approval is no longer waiting.");
+    this.addMessage(rec, "tool", `${allow ? "Allowed" : "Denied"}: ${approval.summary}`, approval.tool, run);
+    this.setChat(rec, run, "working");
+    run.session?.approve(approvalId, allow);
   }
 
-  async stopTask(id: string): Promise<void> {
+  async stopTask(id: string, chat?: string): Promise<void> {
     const rec = this.get(id);
-    if (rec.task.state !== "working") return;
-    rec.launch++;
-    rec.abort?.abort();
-    rec.session?.stop();
-    delete rec.session;
-    this.setState(rec, "stuck", { error: { message: "Stopped by you" } });
+    const runs = chat ? [this.runOf(rec, chat)] : [...rec.runs.values()];
+    for (const run of runs) {
+      if (run.chat.state !== "working") continue;
+      run.launch++;
+      run.session?.stop();
+      delete run.session;
+      this.setChat(rec, run, "stuck", { error: { message: "Stopped by you" } });
+    }
+    // Setup is shared, so it only stops when nothing is waiting for it.
+    if (![...rec.runs.values()].some((r) => r.chat.state === "working")) {
+      rec.abort?.abort();
+      delete rec.preparing;
+    }
   }
 
   resolveConflicts(id: string, target: string): Promise<void> {
@@ -300,8 +350,10 @@ export class LocalRunner implements Runner {
       if (rec.task.archivedAt) return;
       rec.abort?.abort();
       this.endSession(rec);
-      await rec.launching;
-      if (rec.task.state === "working") this.setState(rec, "stuck", { error: { message: "Stopped when archived" } });
+      await this.launched(rec);
+      for (const run of rec.runs.values()) {
+        if (run.chat.state === "working") this.setChat(rec, run, "stuck", { error: { message: "Stopped when archived" } });
+      }
 
       if (rec.worktree && existsSync(rec.worktree)) {
         // Work lives on the branch from here, so nothing goes with the worktree.
@@ -338,7 +390,7 @@ export class LocalRunner implements Runner {
       rec.abort?.abort();
       this.endSession(rec);
       // Worktree creation can't be interrupted, so let it finish, then remove it.
-      await rec.launching;
+      await this.launched(rec);
       // Only ever a branch and worktree Solus made for this task.
       await removeWorkspace(this.repo.path, rec.worktree, rec.task.branch, !rec.task.branch.startsWith("solus/"));
       this.records.delete(id);
@@ -532,9 +584,11 @@ export class LocalRunner implements Runner {
   }
 
   private endSession(rec: Rec) {
-    rec.launch++;
-    rec.session?.stop();
-    delete rec.session;
+    for (const run of rec.runs.values()) {
+      run.launch++;
+      run.session?.stop();
+      delete run.session;
+    }
     rec.shell?.kill();
     delete rec.shell;
     rec.action?.stop();
@@ -621,18 +675,40 @@ export class LocalRunner implements Runner {
     };
   }
 
+  private newRun(chat: Chat, agentSession?: string): Run {
+    return { chat, streaming: new Map(), launch: 0, ...(agentSession ? { agentSession } : {}) };
+  }
+
   private newRecord(stored: StoredTask): Rec {
+    const { task, agentSession } = stored;
+    // Tasks saved before chats existed become a single chat, history and all.
+    if (!task.chats?.length) {
+      const [main] = chatsOf(task) as [Chat];
+      task.chats = [{ ...main, state: task.state === "merged" ? "ready_for_review" : task.state }];
+    }
+    const sessions = stored.sessions ?? (agentSession ? { [MAIN_CHAT]: agentSession } : {});
+    const runs = new Map(task.chats.map((chat) => [chat.id, this.newRun(chat, sessions[chat.id])]));
     return {
       ...stored,
       messages: [],
-      streaming: new Map(),
+      runs,
       terminal: [],
       runOutput: [],
       files: [],
       size: { cols: 80, rows: 24 },
-      launch: 0,
       queue: Promise.resolve(),
     };
+  }
+
+  private runOf(rec: Rec, chat: string = MAIN_CHAT): Run {
+    const run = rec.runs.get(chat);
+    if (!run) throw new Error(`Unknown chat: ${chat}`);
+    return run;
+  }
+
+  /** Waits for every launch in progress, which may be creating the worktree. */
+  private async launched(rec: Rec) {
+    await Promise.all([...rec.runs.values()].map((r) => r.launching));
   }
 
   private async restore() {
@@ -647,12 +723,14 @@ export class LocalRunner implements Runner {
       // Opening a PR used to end a task. It stays open now, until the PR merges.
       if (rec.task.state === "merged" && rec.task.pullRequest && !rec.task.mergedInto && rec.worktree) rec.task.state = "ready_for_review";
       // Its agent died with the last daemon. Replying starts it again.
-      if (rec.task.state === "working" || rec.task.approval) {
-        rec.task.state = "stuck";
-        rec.task.error = { message: "Solus restarted while this task was running" };
-        delete rec.task.question;
-        delete rec.task.approval;
+      for (const { chat } of rec.runs.values()) {
+        if (chat.state !== "working" && !chat.approval) continue;
+        chat.state = "stuck";
+        chat.error = { message: "Solus restarted while this task was running" };
+        delete chat.question;
+        delete chat.approval;
       }
+      this.followChats(rec);
       if (rec.worktree && existsSync(rec.worktree)) {
         try {
           rec.files = await readDiff(rec.worktree, rec.task.baseBranch, this.copiedFiles());
@@ -675,12 +753,12 @@ export class LocalRunner implements Runner {
 
   private save() {
     this.store.saveTasks(
-      [...this.records.values()].map(({ task, worktree, setupDone, agentSession, existingBranch }) => ({
+      [...this.records.values()].map(({ task, worktree, setupDone, runs, existingBranch }) => ({
         task,
         ...(existingBranch ? { existingBranch } : {}),
         ...(worktree ? { worktree } : {}),
         ...(setupDone ? { setupDone } : {}),
-        ...(agentSession ? { agentSession } : {}),
+        sessions: Object.fromEntries([...runs].flatMap(([id, r]) => (r.agentSession ? [[id, r.agentSession]] : []))),
       })),
     );
   }
@@ -699,11 +777,8 @@ export class LocalRunner implements Runner {
     return (rec.task.lastActivityAt = Date.now());
   }
 
-  private setState(
-    rec: Rec,
-    to: TaskState,
-    extra: Pick<Partial<Task>, "question" | "error" | "approval" | "pullRequest" | "mergedInto"> = {},
-  ) {
+  /** Merging ends the task as a whole, whatever its chats last did. */
+  private setState(rec: Rec, to: "merged", extra: Partial<Pick<Task, "mergedInto">>) {
     const from = rec.task.state;
     assertTransition(from, to);
     rec.task.state = to;
@@ -716,10 +791,45 @@ export class LocalRunner implements Runner {
     this.emit({ type: "task.state_changed", taskId: rec.task.id, at, from, to, task: structuredClone(rec.task) });
   }
 
-  private addMessage(rec: Rec, role: MessageRole, text: string, tool?: string) {
+  private setChat(rec: Rec, run: Run, to: TaskState, extra: Partial<Pick<Chat, "question" | "error" | "approval">> = {}) {
+    const { chat } = run;
+    assertTransition(chat.state, to);
+    chat.state = to;
+    delete chat.question;
+    delete chat.approval;
+    delete chat.error;
+    Object.assign(chat, extra);
+    const from = rec.task.state;
+    this.followChats(rec);
+    const at = this.touch(rec);
+    this.save();
+    const task = structuredClone(rec.task);
+    // Sent even when the task's state stands, so a chat's own change still reaches the UI.
+    this.emit(
+      from === rec.task.state
+        ? { type: "task.updated", taskId: task.id, at, task }
+        : { type: "task.state_changed", taskId: task.id, at, from, to: task.state, task },
+    );
+  }
+
+  /** The task shows whichever chat most needs a person. */
+  private followChats(rec: Rec) {
+    const lead = leadChat([...rec.runs.values()].map((r) => r.chat));
+    if (!lead || rec.task.state === "merged") return;
+    rec.task.state = lead.state;
+    delete rec.task.question;
+    delete rec.task.approval;
+    delete rec.task.error;
+    if (lead.question) rec.task.question = lead.question;
+    if (lead.approval) rec.task.approval = lead.approval;
+    if (lead.error) rec.task.error = lead.error;
+  }
+
+  private addMessage(rec: Rec, role: MessageRole, text: string, tool?: string, run?: Run) {
     const at = this.touch(rec);
     const id = `msg_${at}_${this.nextMessage++}`;
-    const message: AgentMessage = { id, taskId: rec.task.id, role, text, at, ...(tool ? { tool } : {}) };
+    const chatId = run && run.chat.id !== MAIN_CHAT ? { chatId: run.chat.id } : {};
+    const message: AgentMessage = { id, taskId: rec.task.id, role, text, at, ...(tool ? { tool } : {}), ...chatId };
     rec.messages.push(message);
     this.store.appendMessage(message);
     this.emit({
@@ -731,6 +841,7 @@ export class LocalRunner implements Runner {
       chunk: text,
       done: true,
       ...(tool ? { tool } : {}),
+      ...chatId,
     });
   }
 
@@ -752,29 +863,40 @@ export class LocalRunner implements Runner {
   }
 
   /** Creates the worktree on first use, then starts or resumes the agent. */
-  private async launch(rec: Rec, message: string) {
-    const launch = ++rec.launch;
-    rec.lastMessage = message;
-    const abandoned = () => launch !== rec.launch;
-    const abort = (rec.abort = new AbortController());
+  private async launch(rec: Rec, run: Run, message: string) {
+    const launch = ++run.launch;
+    run.lastMessage = message;
+    const abandoned = () => launch !== run.launch;
     try {
-      await this.prepare(rec, abort.signal);
+      await this.workspaceReady(rec);
       if (abandoned()) return;
       const cwd = rec.worktree as string;
-      // An agent that never ran has no session to resume, and hasn't seen the task.
-      const session = rec.agentSession;
+      // The main chat's agent needs the task if it never saw it. Other chats start clean.
+      const session = run.agentSession;
       const { prompt: task } = rec.task;
-      const prompt = session || message === task ? message : `${task}\n\n${message}`;
-      rec.session = this.adapterFor(rec.task.agent).start(
+      const prompt = session || message === task || run.chat.id !== MAIN_CHAT ? message : `${task}\n\n${message}`;
+      run.session = this.adapterFor(run.chat.agent).start(
         { taskId: rec.task.id, cwd, prompt, env: this.workspaceEnv(rec), ...(session ? { session } : {}) },
         (event) => {
-          if (!abandoned()) rec.queue = rec.queue.then(() => this.onAgentEvent(rec, event));
+          if (!abandoned()) rec.queue = rec.queue.then(() => this.onAgentEvent(rec, run, event));
         },
       );
     } catch (err) {
       if (abandoned()) return;
-      if (rec.task.state === "working") this.setState(rec, "stuck", { error: describe(err) });
+      if (run.chat.state === "working") this.setChat(rec, run, "stuck", { error: describe(err) });
     }
+  }
+
+  /** Chats share one worktree, so whichever starts first prepares it for all. */
+  private workspaceReady(rec: Rec): Promise<void> {
+    if (!rec.preparing) {
+      const abort = (rec.abort = new AbortController());
+      const preparing: Promise<void> = this.prepare(rec, abort.signal).finally(() => {
+        if (rec.preparing === preparing) delete rec.preparing;
+      });
+      rec.preparing = preparing;
+    }
+    return rec.preparing;
   }
 
   private async prepare(rec: Rec, signal: AbortSignal) {
@@ -804,14 +926,14 @@ export class LocalRunner implements Runner {
     this.save();
   }
 
-  private async onAgentEvent(rec: Rec, event: AgentEvent) {
+  private async onAgentEvent(rec: Rec, run: Run, event: AgentEvent) {
     try {
       switch (event.type) {
         case "text":
-          this.onText(rec, event);
+          this.onText(rec, run, event);
           break;
         case "tool":
-          this.addMessage(rec, "tool", event.text, event.tool);
+          this.addMessage(rec, "tool", event.text, event.tool, run);
           break;
         case "terminal":
           this.term(rec, event.data);
@@ -820,21 +942,21 @@ export class LocalRunner implements Runner {
           await this.refreshDiff(rec);
           break;
         case "session":
-          rec.agentSession = event.id;
+          run.agentSession = event.id;
           this.save();
           break;
         case "session_lost":
-          delete rec.session;
-          delete rec.agentSession;
+          delete run.session;
+          delete run.agentSession;
           this.save();
-          if (rec.task.state === "working") rec.launching = this.launch(rec, rec.lastMessage ?? rec.task.prompt);
+          if (run.chat.state === "working") run.launching = this.launch(rec, run, run.lastMessage ?? rec.task.prompt);
           break;
         case "ask":
-          if (rec.task.state === "working") this.setState(rec, "needs_input", { question: event.question });
+          if (run.chat.state === "working") this.setChat(rec, run, "needs_input", { question: event.question });
           break;
         case "approval":
-          if (rec.task.state === "working") {
-            this.setState(rec, "needs_input", {
+          if (run.chat.state === "working") {
+            this.setChat(rec, run, "needs_input", {
               question: `Allow ${event.tool}?`,
               approval: { id: event.id, tool: event.tool, summary: event.summary },
             });
@@ -842,11 +964,11 @@ export class LocalRunner implements Runner {
           break;
         case "turn_end":
           await this.refreshDiff(rec);
-          if (rec.task.state === "working") this.setState(rec, "ready_for_review");
+          if (run.chat.state === "working") this.setChat(rec, run, "ready_for_review");
           break;
         case "error":
-          delete rec.session;
-          if (rec.task.state === "working") this.setState(rec, "stuck", { error: event.error });
+          delete run.session;
+          if (run.chat.state === "working") this.setChat(rec, run, "stuck", { error: event.error });
           break;
       }
     } catch (err) {
@@ -859,12 +981,13 @@ export class LocalRunner implements Runner {
     }
   }
 
-  private onText(rec: Rec, event: Extract<AgentEvent, { type: "text" }>) {
+  private onText(rec: Rec, run: Run, event: Extract<AgentEvent, { type: "text" }>) {
     const at = this.touch(rec);
-    let message = rec.streaming.get(event.id);
+    const chatId = run.chat.id !== MAIN_CHAT ? { chatId: run.chat.id } : {};
+    let message = run.streaming.get(event.id);
     if (!message) {
-      message = { id: event.id, taskId: rec.task.id, role: "agent", text: "", at };
-      rec.streaming.set(event.id, message);
+      message = { id: event.id, taskId: rec.task.id, role: "agent", text: "", at, ...chatId };
+      run.streaming.set(event.id, message);
       rec.messages.push(message);
     }
     message.text += event.chunk;
@@ -876,9 +999,10 @@ export class LocalRunner implements Runner {
       role: "agent",
       chunk: event.chunk,
       done: event.done,
+      ...chatId,
     });
     if (event.done) {
-      rec.streaming.delete(event.id);
+      run.streaming.delete(event.id);
       this.store.appendMessage(message);
     }
   }

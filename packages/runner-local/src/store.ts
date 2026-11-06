@@ -13,6 +13,8 @@ export interface StoredTask {
   existingBranch?: boolean;
   /** The agent's own session id, once it has run, for resuming. */
   agentSession?: string;
+  /** Each chat's agent session, by chat id. Replaces agentSession. */
+  sessions?: Record<string, string>;
 }
 
 const isRunning = (pid: number) => {

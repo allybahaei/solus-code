@@ -14,6 +14,7 @@ import type {
   SetupStatus,
   MergeStrategy,
   PullRequestStatus,
+  Chat,
   Task,
   TaskSources,
 } from "@solus/core";
@@ -90,11 +91,12 @@ export class RemoteRunner implements Runner {
   getCheckLog = (id: string, url: string) => this.call<string>("getCheckLog", id, url);
   attachFile = (id: string, name: string, base64: string) => this.call<string>("attachFile", id, name, base64);
   startTask = (id: string) => this.run("startTask", id);
-  sendMessage = (id: string, message: string, opts?: { agent?: AgentKind }) =>
+  createChat = (id: string, agent?: AgentKind) => this.call<Chat>("createChat", id, agent);
+  sendMessage = (id: string, message: string, opts?: { agent?: AgentKind; chat?: string }) =>
     this.run("sendMessage", id, message, opts ?? {});
   answerApproval = (id: string, approvalId: string, allow: boolean) =>
     this.run("answerApproval", id, approvalId, allow);
-  stopTask = (id: string) => this.run("stopTask", id);
+  stopTask = (id: string, chat?: string) => this.run("stopTask", id, chat);
   deleteTask = (id: string) => this.run("deleteTask", id);
   archiveTask = (id: string) => this.run("archiveTask", id);
   restoreTask = (id: string) => this.run("restoreTask", id);

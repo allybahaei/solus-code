@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { AgentMessage, DiffFile, RepoInfo, Runner, RunnerSnapshot, SetupStatus, Task } from "@solus/core";
+import { MAIN_CHAT, chatsOf, type AgentMessage, type Chat, type DiffFile, type RepoInfo, type Runner, type RunnerSnapshot, type SetupStatus, type Task } from "@solus/core";
 import { navOrder } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
@@ -39,13 +39,16 @@ interface SolusState {
   query: string | null;
   /** Local display names, set by renaming a tab. Kept per browser. */
   renames: Record<string, string>;
-  /** Recently closed tabs, newest first, for the history menu. */
-  closedTabs: string[];
+  /** The chat tab showing in each task. */
+  activeChat: Record<string, string>;
+  /** Chat tabs closed in each task, newest first. Reopened from the history menu. */
+  closedChats: Record<string, string[]>;
   /** Whether the changes/terminal pane is shown on wide screens. */
   rightPaneOpen: boolean;
 
   open: (id: string) => void;
-  closeTab: (id: string) => void;
+  openChat: (taskId: string, chatId: string) => void;
+  closeChat: (taskId: string, chatId: string) => void;
   cycleTab: (delta: 1 | -1) => void;
   move: (delta: 1 | -1) => void;
   setCenterView: (view: CenterView) => void;
@@ -73,6 +76,40 @@ function loadRenames(): Record<string, string> {
 /** The name shown for a task: the user's rename, or the task title. */
 export function displayTitle(s: Pick<SolusState, "renames">, task: Task): string {
   return s.renames[task.id] ?? task.title;
+}
+
+/** The name shown for a chat tab. */
+export function chatTitle(s: Pick<SolusState, "renames">, task: Task, chat: Chat): string {
+  return s.renames[`${task.id}/${chat.id}`] ?? chat.title;
+}
+
+/** Chats with an open tab. One asking for a person always has a tab. */
+export function visibleChats(s: Pick<SolusState, "closedChats">, task: Task): Chat[] {
+  const closed = s.closedChats[task.id] ?? [];
+  return chatsOf(task).filter((c) => !closed.includes(c.id) || c.state === "needs_input" || c.state === "stuck");
+}
+
+/** Which chat tab a task is showing. */
+export function activeChatId(s: Pick<SolusState, "activeChat" | "closedChats">, task: Task): string {
+  const chats = visibleChats(s, task);
+  const wanted = s.activeChat[task.id];
+  return chats.find((c) => c.id === wanted)?.id ?? chats[0]?.id ?? MAIN_CHAT;
+}
+
+/** A task as one chat sees it, so the chat and composer read that chat's state. */
+export function taskInChat(task: Task, chatId: string): Task {
+  const chat = chatsOf(task).find((c) => c.id === chatId);
+  if (!chat) return task;
+  const view: Task = { ...task, agent: chat.agent, state: task.state === "merged" ? "merged" : chat.state };
+  delete view.question;
+  delete view.approval;
+  delete view.error;
+  return {
+    ...view,
+    ...(chat.question ? { question: chat.question } : {}),
+    ...(chat.approval ? { approval: chat.approval } : {}),
+    ...(chat.error ? { error: chat.error } : {}),
+  };
 }
 
 const PINNED_KEY = "solus.pinned";
@@ -123,35 +160,42 @@ export const useSolus = create<SolusState>()((set, get) => ({
   lastSeen: {},
   query: null,
   renames: {},
-  closedTabs: [],
+  activeChat: {},
+  closedChats: {},
   rightPaneOpen: true,
 
   open: (id) =>
     set((s) => ({
       activeId: id,
       lastSeen: seen(s, s.activeId, id),
-      closedTabs: s.closedTabs.filter((t) => t !== id),
       openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
       showList: false,
       centerView: "chat",
     })),
 
-  closeTab: (id) =>
+  openChat: (taskId, chatId) =>
+    set((s) => ({
+      activeChat: { ...s.activeChat, [taskId]: chatId },
+      closedChats: { ...s.closedChats, [taskId]: (s.closedChats[taskId] ?? []).filter((c) => c !== chatId) },
+      centerView: "chat",
+    })),
+
+  closeChat: (taskId, chatId) =>
     set((s) => {
-      const i = s.openTabs.indexOf(id);
-      const openTabs = s.openTabs.filter((t) => t !== id);
-      const activeId =
-        s.activeId === id ? (openTabs[Math.min(i, openTabs.length - 1)] ?? null) : s.activeId;
-      const closedTabs = [id, ...s.closedTabs.filter((t) => t !== id)].slice(0, 10);
-      return { openTabs, activeId, closedTabs, showList: activeId === null ? true : s.showList };
+      const task = s.tasks[taskId];
+      // The last tab stays, so a task always has a chat to show.
+      if (!task || visibleChats(s, task).length < 2) return s;
+      return { closedChats: { ...s.closedChats, [taskId]: [chatId, ...(s.closedChats[taskId] ?? [])] } };
     }),
 
   cycleTab: (delta) => {
-    const { openTabs, activeId } = get();
-    if (openTabs.length === 0) return;
-    const i = activeId ? openTabs.indexOf(activeId) : -1;
-    const next = openTabs[(i + delta + openTabs.length) % openTabs.length];
-    if (next) set((s) => ({ activeId: next, centerView: "chat", lastSeen: seen(s, s.activeId, next) }));
+    const s = get();
+    const task = s.activeId ? s.tasks[s.activeId] : undefined;
+    if (!task) return;
+    const chats = visibleChats(s, task);
+    const i = chats.findIndex((c) => c.id === activeChatId(s, task));
+    const next = chats[(i + delta + chats.length) % chats.length];
+    if (next) s.openChat(task.id, next.id);
   },
 
   move: (delta) => {
@@ -270,28 +314,30 @@ export function connectRunner(runner: Runner, connection?: ConnectionSource): ()
           const i = s.openTabs.indexOf(e.taskId);
           const openTabs = s.openTabs.filter((id) => id !== e.taskId);
           const activeId = s.activeId === e.taskId ? (openTabs[Math.min(i, openTabs.length - 1)] ?? null) : s.activeId;
-          return { tasks, openTabs, activeId, closedTabs: s.closedTabs.filter((id) => id !== e.taskId) };
+          return { tasks, openTabs, activeId };
         });
         break;
 
       case "agent.output":
         set((s) => {
           const list = s.messages[e.taskId] ?? [];
-          const last = list.at(-1);
-          const messages =
-            last?.id === e.messageId
-              ? [...list.slice(0, -1), { ...last, text: last.text + e.chunk }]
-              : [
-                  ...list,
-                  {
-                    id: e.messageId,
-                    taskId: e.taskId,
-                    role: e.role,
-                    text: e.chunk,
-                    at: e.at,
-                    ...(e.tool ? { tool: e.tool } : {}),
-                  },
-                ];
+          // Not always the last: chats running together stream side by side.
+          const i = list.findLastIndex((m) => m.id === e.messageId);
+          const found = list[i];
+          const messages = found
+            ? list.with(i, { ...found, text: found.text + e.chunk })
+            : [
+                ...list,
+                {
+                  id: e.messageId,
+                  taskId: e.taskId,
+                  role: e.role,
+                  text: e.chunk,
+                  at: e.at,
+                  ...(e.tool ? { tool: e.tool } : {}),
+                  ...(e.chatId ? { chatId: e.chatId } : {}),
+                },
+              ];
           const task = s.tasks[e.taskId];
           return {
             messages: { ...s.messages, [e.taskId]: messages },

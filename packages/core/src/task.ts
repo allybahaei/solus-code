@@ -61,6 +61,22 @@ export interface PullRequestStatus {
   comments: PullRequestComment[];
 }
 
+/** The chat every task starts with. Its messages have no chatId. */
+export const MAIN_CHAT = "main";
+
+/** One conversation with an agent. All of a task's chats share its worktree. */
+export interface Chat {
+  id: string;
+  title: string;
+  agent: AgentKind;
+  /** Never merged: only the task as a whole merges. */
+  state: TaskState;
+  createdAt: Timestamp;
+  question?: string;
+  approval?: ApprovalRequest;
+  error?: TaskError;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -89,6 +105,8 @@ export interface Task {
   port?: number;
   /** The saved command running now, if any. */
   running?: string;
+  /** Absent on runners without chats: see chatsOf. */
+  chats?: Chat[];
   /** The task's pull request. It may still be open: the state says if it landed. */
   pullRequest?: PullRequestRef;
   /** Set once merged locally: the branch it was merged into. */
@@ -114,6 +132,35 @@ export interface CreateTaskInput {
   /** Defaults to claude-code. */
   agent?: AgentKind;
   source?: TaskSource;
+}
+
+/** A task's chats. A task without any behaves as one chat. */
+export function chatsOf(task: Task): Chat[] {
+  if (task.chats?.length) return task.chats;
+  const { agent, state, createdAt, question, approval, error } = task;
+  return [
+    {
+      id: MAIN_CHAT,
+      title: "Chat",
+      agent,
+      state,
+      createdAt,
+      ...(question ? { question } : {}),
+      ...(approval ? { approval } : {}),
+      ...(error ? { error } : {}),
+    },
+  ];
+}
+
+const CHAT_ORDER: readonly TaskState[] = ["needs_input", "stuck", "working", "ready_for_review", "idle"];
+
+/** The chat that speaks for the task: whichever most needs a person, then whichever is busy. */
+export function leadChat(chats: readonly Chat[]): Chat | undefined {
+  for (const state of CHAT_ORDER) {
+    const chat = chats.find((c) => c.state === state);
+    if (chat) return chat;
+  }
+  return undefined;
 }
 
 /** Board order: attention states first, then most recent activity. */

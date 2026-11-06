@@ -13,6 +13,8 @@ export interface AgentMessage {
   at: Timestamp;
   /** For tool messages: which tool ran, such as "Edit" or "Bash". */
   tool?: string;
+  /** The chat it belongs to. Absent for the main chat. */
+  chatId?: string;
 }
 
 interface BaseEvent {
@@ -60,6 +62,7 @@ export interface AgentOutputEvent extends BaseEvent {
   chunk: string;
   done: boolean;
   tool?: string;
+  chatId?: string;
 }
 
 /** Raw terminal bytes from the task's workspace, ANSI escapes included. */

@@ -23,7 +23,7 @@ function toItems(messages: AgentMessage[]): Item[] {
   return items;
 }
 
-export function Transcript({ task, messages }: { task: Task; messages: AgentMessage[] }) {
+export function Transcript({ task, messages, newChat = false }: { task: Task; messages: AgentMessage[]; newChat?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const items = toItems(messages);
@@ -53,10 +53,14 @@ export function Transcript({ task, messages }: { task: Task; messages: AgentMess
       <div className="w-full space-y-5 px-4 py-6 text-sm leading-relaxed">
         {items.length === 0 && (
           <p className="text-muted-foreground">
-            {task.state === "idle" ? "Not started yet. The agent will begin with this prompt:" : "No output yet."}
+            {newChat
+              ? "A new chat in this workspace. It shares the same files and branch as the other chats."
+              : task.state === "idle"
+                ? "Not started yet. The agent will begin with this prompt:"
+                : "No output yet."}
           </p>
         )}
-        {items.length === 0 && task.state === "idle" && (
+        {items.length === 0 && task.state === "idle" && !newChat && (
           <div className="rounded-lg border bg-muted/40 px-3 py-2 whitespace-pre-wrap">{task.prompt}</div>
         )}
         {items.map((item, i) =>

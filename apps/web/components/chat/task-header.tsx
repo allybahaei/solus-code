@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { archiveTask, deleteTask, startTask, stopTask } from "@/lib/actions";
 import { reviewOf, useReview } from "@/lib/review-store";
-import { displayTitle, useSolus } from "@/lib/store";
+import { activeChatId, displayTitle, taskInChat, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 /** Title, branch, state, the Chat/Review switch, and the action that moves the task forward. */
@@ -141,6 +141,8 @@ function DeleteTask({ task }: { task: Task }) {
 
 function Actions({ task }: { task: Task }) {
   const openMerge = useReview((s) => s.openMerge);
+  const chatId = useSolus((s) => activeChatId(s, task));
+  const inChat = taskInChat(task, chatId);
   if (task.archivedAt) return null;
   switch (task.state) {
     case "idle":
@@ -152,7 +154,12 @@ function Actions({ task }: { task: Task }) {
       );
     case "working":
       return (
-        <Button size="sm" variant="outline" onClick={() => stopTask(task.id)} title="Stop the agent">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => stopTask(task.id, inChat.state === "working" ? chatId : undefined)}
+          title={inChat.state === "working" ? "Stop this chat's agent" : "Stop every running chat"}
+        >
           <Square />
           Stop
         </Button>

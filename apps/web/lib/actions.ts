@@ -1,18 +1,19 @@
 "use client";
 
-import type {
-  AgentKind,
-  MergeOptions,
-  MergeStrategy,
-  PROptions,
-  PullRequestCheck,
-  PullRequestComment,
-  PullRequestStatus,
-  TaskSource,
+import {
+  MAIN_CHAT,
+  type AgentKind,
+  type MergeOptions,
+  type MergeStrategy,
+  type PROptions,
+  type PullRequestCheck,
+  type PullRequestComment,
+  type PullRequestStatus,
+  type TaskSource,
 } from "@solus/core";
 import { useReview } from "@/lib/review-store";
 import { getRunner } from "./runner";
-import { useSolus } from "./store";
+import { activeChatId, useSolus } from "./store";
 
 /** Runs a runner call; a failure shows as a notice instead of throwing. */
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -89,14 +90,30 @@ export const stopAction = (id: string) => attempt(() => getRunner().stopAction(i
 export const archiveTask = (id: string) => attempt(() => getRunner().archiveTask(id));
 export const restoreTask = (id: string) => attempt(() => getRunner().restoreTask(id));
 export const deleteTask = (id: string) => attempt(() => getRunner().deleteTask(id));
-export const stopTask = (id: string) => attempt(() => getRunner().stopTask(id));
-export function sendMessage(id: string, text: string, agent?: AgentKind) {
-  const task = useSolus.getState().tasks[id];
-  if (task && agent && agent !== task.agent) {
-    // Optimistic: show the new agent right away.
-    useSolus.setState((s) => ({ tasks: { ...s.tasks, [id]: { ...task, agent } } }));
+export const stopTask = (id: string, chat?: string) => attempt(() => getRunner().stopTask(id, chat));
+
+/** Adds a chat to the task and opens its tab. */
+export async function newChat(taskId: string, agent: AgentKind) {
+  const chat = await attempt(() => getRunner().createChat(taskId, agent));
+  if (chat) {
+    useSolus.setState((s) => {
+      const task = s.tasks[taskId];
+      if (!task || task.chats?.some((c) => c.id === chat.id)) return s;
+      return { tasks: { ...s.tasks, [taskId]: { ...task, chats: [...(task.chats ?? []), chat] } } };
+    });
+    useSolus.getState().openChat(taskId, chat.id);
   }
-  return attempt(() => getRunner().sendMessage(id, text, agent ? { agent } : {}));
+}
+/** Goes to the chat showing in that task, unless one is named. */
+export function sendMessage(id: string, text: string, agent?: AgentKind, chat?: string) {
+  const s = useSolus.getState();
+  const task = s.tasks[id];
+  const target = chat ?? (task ? activeChatId(s, task) : MAIN_CHAT);
+  if (task && agent && agent !== task.agent && target === MAIN_CHAT) {
+    // Optimistic: show the new agent right away.
+    useSolus.setState((state) => ({ tasks: { ...state.tasks, [id]: { ...task, agent } } }));
+  }
+  return attempt(() => getRunner().sendMessage(id, text, { ...(agent ? { agent } : {}), chat: target }));
 }
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));

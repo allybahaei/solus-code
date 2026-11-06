@@ -64,7 +64,7 @@ export function Transcript({ task, messages }: { task: Task; messages: AgentMess
             <ToolGroup key={item.id} calls={item.calls} live={task.state === "working" && i === items.length - 1} />
           ) : item.message.role === "user" ? (
             <div key={item.message.id} className="flex justify-end">
-              <div className="max-w-[85%] rounded-2xl bg-secondary px-5 py-3.5 whitespace-pre-wrap">
+              <div className="max-w-[85%] rounded-2xl bg-user-bubble px-5 py-3.5 whitespace-pre-wrap">
                 {item.message.text}
               </div>
             </div>

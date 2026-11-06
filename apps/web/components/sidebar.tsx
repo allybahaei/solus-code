@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { ArrowRight, House, Pin, PinOff, Plus, Search, X } from "lucide-react";
 import { STATE_LABELS, isAttention, type Task, type TaskState } from "@solus/core";
-import { AgentIcon } from "@/components/agent-picker";
 import { sidebarSections } from "@/lib/groups";
 import { ago } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
@@ -211,7 +210,6 @@ function WorkspaceRow({ task }: { task: Task }) {
           />
         )}
         <span className="sr-only">{STATE_LABELS[task.state]}:</span>
-        <AgentIcon agent={task.agent} className={cn("size-3.5", !active && "opacity-70 grayscale")} />
         <span className="min-w-0 flex-1 truncate">{title}</span>
         <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums group-hover:invisible">
           {now !== null ? ago(now - task.lastActivityAt) : ""}

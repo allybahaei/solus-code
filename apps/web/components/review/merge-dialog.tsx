@@ -6,7 +6,7 @@ import type { MergeStrategy, Task } from "@solus/core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { mergeTask, openPullRequest, sendMessage } from "@/lib/actions";
+import { mergeTask, openPullRequest, resolveConflicts } from "@/lib/actions";
 import { stripLocalLinks } from "@/lib/review-message";
 import { reviewOf, rememberMergeMode, useReview, type MergeMode } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
@@ -201,10 +201,7 @@ function MergeForm({ task, initialMode, onDone }: { task: Task; initialMode: Mer
               variant="outline"
               className="mt-2 flex text-foreground"
               onClick={() => {
-                void sendMessage(
-                  task.id,
-                  `Merge ${target.trim()} into your branch, resolve the conflicts, and commit the merge so this branch can merge cleanly.`,
-                );
+                void resolveConflicts(task.id, target.trim());
                 onDone();
               }}
             >

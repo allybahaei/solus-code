@@ -15,11 +15,36 @@ export const excludePaths = (paths: readonly string[]) => paths.map((p) => `:(ex
  * Returns true if there was anything to commit.
  */
 export async function commitAll(worktree: string, message: string, exclude: readonly string[]): Promise<boolean> {
+  const merging = await isMerging(worktree);
+  if (merging) await assertNoMarkers(worktree);
   await git(worktree, ["add", "-A", "--", ".", ...excludePaths(exclude)]);
   const staged = (await git(worktree, ["diff", "--cached", "--name-only"])).trim();
-  if (!staged) return false;
+  // A merge must be concluded even if it ended up changing nothing.
+  if (!staged && !merging) return false;
   await git(worktree, ["commit", "-m", message]);
   return true;
+}
+
+async function isMerging(worktree: string): Promise<boolean> {
+  return (await git(worktree, ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], [0, 1])).trim() !== "";
+}
+
+async function assertNoMarkers(worktree: string) {
+  const files = (await git(worktree, ["grep", "-l", "--untracked", "-E", "^(<{7} |>{7} )"], [0, 1]))
+    .split("\n")
+    .filter(Boolean);
+  if (files.length > 0) throw new Error(`Conflict markers are still in ${files.join(", ")}. Ask the agent to finish resolving them.`);
+}
+
+/**
+ * Starts merging `target` into the task's branch and returns the conflicted
+ * files. Solus does this rather than the agent because a worktree's git data
+ * lives outside it: Codex's sandbox rightly can't write there, and letting it
+ * would let an agent plant hooks that run outside the sandbox.
+ */
+export async function startMerge(worktree: string, target: string): Promise<string[]> {
+  if (!(await isMerging(worktree))) await git(worktree, ["merge", "--no-edit", target], [0, 1]);
+  return (await git(worktree, ["diff", "--name-only", "--diff-filter=U"])).split("\n").filter(Boolean);
 }
 
 /** Where a branch is checked out, if anywhere. */
@@ -56,7 +81,7 @@ async function mergedTree(root: string, target: string, branch: string): Promise
   const conflicts = rest.slice(0, blank === -1 ? rest.length : blank).filter(Boolean);
   if (conflicts.length > 0) {
     throw new Error(
-      `Can't merge: ${conflicts.join(", ")} ${conflicts.length === 1 ? "conflicts" : "conflict"} with ${target}. Ask the agent to merge ${target} into its branch and resolve it.`,
+      `Can't merge: ${conflicts.join(", ")} ${conflicts.length === 1 ? "conflicts" : "conflict"} with ${target}.`,
     );
   }
   return tree.trim();

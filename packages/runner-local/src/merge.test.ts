@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MergeOptions, TaskState } from "@solus/core";
+import type { AgentAdapter } from "./agents/agent";
 import { FakeAgent } from "./agents/fake";
 import { LocalRunner } from "./local-runner";
 
@@ -192,6 +193,72 @@ describe("merging locally", () => {
     // Both append to README.md, so the second conflicts. It must fail cleanly.
     expect(results.map((x) => x.status)).toEqual(["fulfilled", "rejected"]);
     expect(log()).toEqual(["A", "init"]);
+  });
+});
+
+describe("resolving conflicts", () => {
+  /** An agent that only edits files, as a sandboxed one must. */
+  function resolver(fix: (cwd: string) => void): AgentAdapter {
+    return {
+      start({ cwd, session }, emit) {
+        emit({ type: "session", id: "s1" });
+        const edit = () => {
+          fix(cwd);
+          queueMicrotask(() => emit({ type: "turn_end" }));
+        };
+        if (session) edit();
+        else {
+          writeFileSync(join(cwd, "README.md"), "# Branch\n");
+          queueMicrotask(() => emit({ type: "turn_end" }));
+        }
+        return { send: edit, approve() {}, stop() {} };
+      },
+    };
+  }
+
+  async function conflicted(fix: (cwd: string) => void) {
+    runner = await LocalRunner.open({ repoPath: repo, home, adapterFor: () => resolver(fix) });
+    const t = await runner.createTask({ repo: "repo", title: "Edit", prompt: "Edit", baseBranch: "main" });
+    await runner.startTask(t.id);
+    await reaches(runner, t.id, "ready_for_review");
+    writeFileSync(join(repo, "README.md"), "# Main\n");
+    sh(repo, "add", "-A");
+    sh(repo, "commit", "-qm", "main moved");
+    return { r: runner, t };
+  }
+
+  it("merges for the agent, which only edits files, then lands cleanly", async () => {
+    const { r, t } = await conflicted((cwd) => writeFileSync(join(cwd, "README.md"), "# Both\n"));
+    await expect(r.merge(t.id, opts())).rejects.toThrow(/README\.md conflicts with main/);
+
+    await r.resolveConflicts(t.id, "main");
+    await reaches(r, t.id, "ready_for_review");
+    expect((await r.getMessages(t.id)).at(-1)?.text).toContain("README.md");
+
+    await r.merge(t.id, opts({ commitMessage: "Landed" }));
+    expect(readFileSync(join(repo, "README.md"), "utf8")).toBe("# Both\n");
+    expect(log()[0]).toBe("Landed");
+  });
+
+  it("refuses to land while conflict markers remain", async () => {
+    const { r, t } = await conflicted(() => {});
+    await r.resolveConflicts(t.id, "main");
+    await reaches(r, t.id, "ready_for_review");
+    await expect(r.merge(t.id, opts())).rejects.toThrow(/Conflict markers are still in README\.md/);
+    expect(log()[0]).toBe("main moved");
+    expect((await task(r, t.id))?.state).toBe("ready_for_review");
+  });
+
+  it("finishes by itself when nothing actually conflicts", async () => {
+    const r = await open();
+    const t = await finished(r);
+    writeFileSync(join(repo, "other.txt"), "x\n");
+    sh(repo, "add", "-A");
+    sh(repo, "commit", "-qm", "unrelated");
+    await r.resolveConflicts(t.id, "main");
+    expect((await task(r, t.id))?.state).toBe("ready_for_review");
+    await r.merge(t.id, opts());
+    expect(existsSync(join(repo, "other.txt"))).toBe(true);
   });
 });
 

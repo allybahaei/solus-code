@@ -25,7 +25,7 @@ import {
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { readDiff } from "./diff";
 import { readRepo } from "./git";
-import { commitAll, createPullRequest, mergeBranch, removeWorkspace } from "./merge";
+import { commitAll, createPullRequest, mergeBranch, removeWorkspace, startMerge } from "./merge";
 import { checkSetup, type SetupCommands } from "./setup";
 import { WorkspaceShell, type ShellSize } from "./shell";
 import { TaskStore, type StoredTask } from "./store";
@@ -212,6 +212,25 @@ export class LocalRunner implements Runner {
     rec.session?.stop();
     delete rec.session;
     this.setState(rec, "stuck", { error: { message: "Stopped by you" } });
+  }
+
+  resolveConflicts(id: string, target: string): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      const worktree = this.readyWorktree(rec, "resolve conflicts on");
+      await commitAll(worktree, rec.task.title, this.copiedFiles());
+      const conflicts = await startMerge(worktree, target);
+      await this.refreshDiff(rec);
+      if (conflicts.length === 0) {
+        this.term(rec, `\x1b[2mMerged ${target} into ${rec.task.branch} with no conflicts\x1b[0m\r\n`);
+        return;
+      }
+      await this.sendMessage(
+        id,
+        `Solus has started merging ${target} into this branch. These files have conflict markers: ${conflicts.join(", ")}. ` +
+          "Edit them to keep the right result from both sides and remove the markers. Don't run git commands; Solus finishes the merge.",
+      );
+    });
   }
 
   deleteTask(id: string): Promise<void> {

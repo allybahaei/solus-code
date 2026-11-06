@@ -200,6 +200,10 @@ export class MockRunner implements Runner {
     throw new Error(`Task ${id} has nothing to approve; the mock never asks.`);
   }
 
+  async resolveConflicts(id: string, target: string): Promise<void> {
+    await this.sendMessage(id, `Merge ${target} into this branch and resolve the conflicts.`);
+  }
+
   async deleteTask(id: string): Promise<void> {
     const rec = this.get(id);
     rec.scriptGen++;

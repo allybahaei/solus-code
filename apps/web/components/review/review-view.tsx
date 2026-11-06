@@ -20,6 +20,8 @@ export function sortFiles(files: DiffFile[]): DiffFile[] {
 
 /** Sends the drafts and summary to the agent, then goes back to the chat. */
 export function requestChanges(task: Task) {
+  // Comments are cleared after sending, so don't try while offline.
+  if (!useSolus.getState().connected) return;
   const files = useSolus.getState().diffs[task.id] ?? [];
   const review = reviewOf(useReview.getState(), task.id);
   const message = formatReview(files, review.comments, review.summary);
@@ -137,7 +139,8 @@ export function ReviewView({ task, files, narrow }: { task: Task; files: DiffFil
 function ReviewBar({ task, commentCount, summary }: { task: Task; commentCount: number; summary: string }) {
   const setSummary = useReview((s) => s.setSummary);
   const openMerge = useReview((s) => s.openMerge);
-  const canSend = commentCount > 0 || summary.trim().length > 0;
+  const connected = useSolus((s) => s.connected);
+  const canSend = connected && (commentCount > 0 || summary.trim().length > 0);
   const ready = task.state === "ready_for_review";
 
   return (

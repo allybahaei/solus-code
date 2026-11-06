@@ -1,0 +1,25 @@
+{
+  "name": "@solus/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "dev": "tsx watch src/cli.ts",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@solus/core": "workspace:*",
+    "@solus/runner-mock": "workspace:*",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@solus/runner-client": "workspace:*",
+    "@types/node": "^22",
+    "@types/ws": "^8",
+    "tsx": "^4"
+  }
+}

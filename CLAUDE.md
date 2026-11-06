@@ -99,6 +99,8 @@ packages/
   core/             # shared types: Task, TaskState, Runner interface, events
   runner-local/     # local daemon: worktrees + spawning agents
   runner-mock/      # fake runner that emits scripted events (used by the prototype)
+  daemon/           # local server: exposes a Runner over WebSocket, the app's backend
+  runner-client/    # RemoteRunner: the browser's Runner, connected to the daemon
 ```
 
 ## The Runner interface

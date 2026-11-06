@@ -12,6 +12,7 @@
   "dependencies": {
     "@git-diff-view/react": "0.1.8",
     "@solus/core": "workspace:*",
+    "@solus/runner-client": "workspace:*",
     "@solus/runner-mock": "workspace:*",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",

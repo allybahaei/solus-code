@@ -70,6 +70,11 @@ export function TerminalView({ task }: { task: Task }) {
       let written = 0;
       const flush = (chunks: string[] | undefined) => {
         if (!chunks) return;
+        if (chunks.length < written) {
+          // The daemon restarted, so this is a new history.
+          term.reset();
+          written = 0;
+        }
         for (; written < chunks.length; written++) term.write(chunks[written] ?? "");
       };
       flush(useSolus.getState().terminal[task.id]);

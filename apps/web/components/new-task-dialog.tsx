@@ -25,8 +25,10 @@ export function NewTaskDialog() {
   // Kept between tasks, so the last agent you picked stays the default.
   const [agent, setAgent] = useState<AgentKind>("claude-code");
 
+  const connected = useSolus((s) => s.connected);
+
   const submit = () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !connected) return;
     void createAndStart(prompt, agent);
     setPrompt("");
     setOpen(false);
@@ -62,7 +64,7 @@ export function NewTaskDialog() {
         <DialogFooter className="flex-row items-center justify-between sm:justify-between">
           <AgentPicker value={agent} onChange={setAgent} />
           <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">Enter to start</span>
-          <Button onClick={submit} disabled={!prompt.trim()}>
+          <Button onClick={submit} disabled={!prompt.trim() || !connected}>
             Start task
           </Button>
         </DialogFooter>

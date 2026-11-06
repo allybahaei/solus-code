@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "dev": "pnpm --filter web dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
     "lint": "pnpm -r --parallel lint",
     "typecheck": "pnpm -r --parallel typecheck",

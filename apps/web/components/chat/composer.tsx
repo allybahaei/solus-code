@@ -7,6 +7,7 @@ import { AgentPicker } from "@/components/agent-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendMessage, startTask } from "@/lib/actions";
+import { useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const PLACEHOLDER: Record<Task["state"], string> = {
@@ -26,12 +27,14 @@ export function Composer({ task }: { task: Task }) {
   const text = drafts[task.id] ?? "";
   const setText = (v: string) => setDrafts((d) => ({ ...d, [task.id]: v }));
   const disabled = task.state === "merged";
+  // Sending while offline would fail after the box has cleared, losing the text.
+  const connected = useSolus((s) => s.connected);
   // The agent for the next message. Composer is keyed by task, so this resets per task.
   const [agent, setAgent] = useState<AgentKind>(task.agent);
 
   const send = () => {
     const message = text.trim();
-    if (!message || disabled) return;
+    if (!message || disabled || !connected) return;
     setText("");
     void sendMessage(task.id, message, agent);
   };
@@ -84,7 +87,7 @@ export function Composer({ task }: { task: Task }) {
             />
             <div className="flex items-center justify-between px-2.5 pb-2.5">
               <AgentPicker value={agent} onChange={setAgent} disabled={disabled} />
-              <Button size="icon-sm" onClick={send} disabled={disabled || !text.trim()} aria-label="Send">
+              <Button size="icon-sm" onClick={send} disabled={disabled || !connected || !text.trim()} aria-label="Send">
                 <ArrowUp />
               </Button>
             </div>

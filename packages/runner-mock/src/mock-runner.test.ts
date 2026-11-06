@@ -73,6 +73,15 @@ describe("MockRunner without autopilot", () => {
     }
   });
 
+  it("snapshots tasks, conversations, diffs and terminal output together", async () => {
+    await vi.advanceTimersByTimeAsync(MIN);
+    const snap = await runner.snapshot();
+    expect(snap.tasks).toHaveLength(6);
+    expect(snap.messages["tsk_rate_limit"]?.length).toBeGreaterThan(1);
+    expect(snap.diffs["tsk_stripe_v22"]).toHaveLength(3);
+    expect(snap.terminal["tsk_rate_limit"]?.join("")).toContain("@upstash");
+  });
+
   it("waits at needs_input until the user replies, then finishes", async () => {
     await vi.advanceTimersByTimeAsync(2 * MIN);
     const task = (await runner.listTasks()).find((t) => t.id === "tsk_rate_limit");

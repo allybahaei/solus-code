@@ -16,7 +16,7 @@ import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/re
 import { startTask } from "@/lib/actions";
 import { loadReviewPrefs, useReview } from "@/lib/review-store";
 import { useMediaQuery } from "@/lib/hooks";
-import { getRunner } from "@/lib/runner";
+import { getConnection, getRunner } from "@/lib/runner";
 import { connectRunner, useSolus, type CenterView } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,7 @@ export function AppShell() {
   const wide = useMediaQuery("(min-width: 1024px)");
   const rightPaneOpen = useSolus((s) => s.rightPaneOpen);
 
-  useEffect(() => connectRunner(getRunner()), []);
+  useEffect(() => connectRunner(getRunner(), getConnection()), []);
   useEffect(() => loadReviewPrefs(), []);
   useKeyboard();
 
@@ -42,6 +42,7 @@ export function AppShell() {
         <Sidebar />
       </aside>
       <main className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", showList ? "hidden" : "flex")}>
+        <ConnectionBanner />
         <TabBar />
         <ActiveTask wide={wide} />
       </main>
@@ -125,6 +126,19 @@ function RightPane() {
         </>
       ) : null}
     </aside>
+  );
+}
+
+function ConnectionBanner() {
+  const connected = useSolus((s) => s.connected);
+  const loaded = useSolus((s) => s.status === "ready");
+  if (connected) return null;
+  return (
+    <div role="status" className="shrink-0 border-b bg-state-needs-input-soft px-4 py-1.5 text-xs">
+      {loaded
+        ? "Lost the connection to the Solus daemon. Reconnecting…"
+        : "Can't reach the Solus daemon. Is it running? Retrying…"}
+    </div>
   );
 }
 

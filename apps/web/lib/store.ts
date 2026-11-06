@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { AgentMessage, DiffFile, Runner, Task } from "@solus/core";
+import type { AgentMessage, DiffFile, Runner, RunnerSnapshot, Task } from "@solus/core";
 import { navOrder } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
@@ -10,6 +10,8 @@ export type CenterView = "chat" | "changes" | "terminal";
 interface SolusState {
   status: "connecting" | "ready" | "error";
   error: string | null;
+  /** False while the connection to the daemon is down. */
+  connected: boolean;
   tasks: Record<string, Task>;
   messages: Record<string, AgentMessage[]>;
   diffs: Record<string, DiffFile[]>;
@@ -97,6 +99,7 @@ function seen(s: SolusState, ...ids: (string | null)[]): Record<string, number> 
 export const useSolus = create<SolusState>()((set, get) => ({
   status: "connecting",
   error: null,
+  connected: true,
   tasks: {},
   messages: {},
   diffs: {},
@@ -179,9 +182,54 @@ export const useSolus = create<SolusState>()((set, get) => ({
   toggleRightPane: () => set((s) => ({ rightPaneOpen: !s.rightPaneOpen })),
 }));
 
-/** Loads a snapshot from the runner and keeps the store in sync. Returns unsubscribe. */
-export function connectRunner(runner: Runner): () => void {
+/** A runner reached over a connection that can drop, such as RemoteRunner. */
+export interface ConnectionSource {
+  onStatus: (listener: (status: "connecting" | "open" | "closed") => void) => () => void;
+}
+
+/** Replaces the store's data with a fresh snapshot, keeping what's on screen where it can. */
+function applySnapshot(snapshot: RunnerSnapshot) {
   const { setState: set, getState: get } = useSolus;
+  const ids = new Set(snapshot.tasks.map((t) => t.id));
+  set((s) => {
+    const openTabs = s.openTabs.filter((id) => ids.has(id));
+    const activeId = s.activeId && ids.has(s.activeId) ? s.activeId : (openTabs[0] ?? null);
+    return {
+      status: "ready",
+      error: null,
+      pinned: loadPinned(),
+      renames: loadRenames(),
+      // Everything that happened before you opened the app counts as seen.
+      lastSeen: Object.fromEntries(snapshot.tasks.map((t) => [t.id, s.lastSeen[t.id] ?? Date.now()])),
+      tasks: Object.fromEntries(snapshot.tasks.map((t) => [t.id, t])),
+      messages: snapshot.messages,
+      diffs: snapshot.diffs,
+      terminal: snapshot.terminal,
+      openTabs,
+      activeId,
+    };
+  });
+  if (get().activeId === null) {
+    const first = navOrder(Object.values(get().tasks), get().pinned, false)[0];
+    if (first) set({ activeId: first.id, openTabs: [first.id] });
+  }
+}
+
+/**
+ * Keeps the store in sync with a runner. With a connection, reloads a snapshot
+ * on every connect, since events sent while disconnected are gone. Returns a
+ * function that stops listening.
+ */
+export function connectRunner(runner: Runner, connection?: ConnectionSource): () => void {
+  const { setState: set } = useSolus;
+
+  const load = () =>
+    runner
+      .snapshot()
+      .then(applySnapshot)
+      .catch((err: unknown) => {
+        set({ status: "error", error: err instanceof Error ? err.message : String(err) });
+      });
 
   const refreshDiff = (id: string) => {
     runner
@@ -244,34 +292,17 @@ export function connectRunner(runner: Runner): () => void {
     }
   });
 
-  (async () => {
-    try {
-      const tasks = await runner.listTasks();
-      const entries = await Promise.all(
-        tasks.map(async (t) => {
-          const [messages, diff] = await Promise.all([runner.getMessages(t.id), runner.getDiff(t.id)]);
-          return { t, messages, files: diff.files };
-        }),
-      );
-      // Events may have arrived while loading; keep anything newer.
-      set((s) => ({
-        status: "ready",
-        pinned: loadPinned(),
-        renames: loadRenames(),
-        // Everything that happened before you opened the app counts as seen.
-        lastSeen: Object.fromEntries(entries.map(({ t }) => [t.id, s.lastSeen[t.id] ?? Date.now()])),
-        tasks: Object.fromEntries(entries.map(({ t }) => [t.id, s.tasks[t.id] ?? t])),
-        messages: Object.fromEntries(entries.map(({ t, messages }) => [t.id, s.messages[t.id] ?? messages])),
-        diffs: Object.fromEntries(entries.map(({ t, files }) => [t.id, s.diffs[t.id] ?? files])),
-      }));
-      if (get().activeId === null) {
-        const first = navOrder(Object.values(get().tasks), get().pinned, false)[0];
-        if (first) set({ activeId: first.id, openTabs: [first.id] });
-      }
-    } catch (err) {
-      set({ status: "error", error: err instanceof Error ? err.message : String(err) });
-    }
-  })();
+  if (!connection) {
+    void load();
+    return unsubscribe;
+  }
 
-  return unsubscribe;
+  const stopWatching = connection.onStatus((status) => {
+    set({ connected: status !== "closed" });
+    if (status === "open") void load();
+  });
+  return () => {
+    stopWatching();
+    unsubscribe();
+  };
 }

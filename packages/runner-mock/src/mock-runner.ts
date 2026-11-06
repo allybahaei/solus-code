@@ -11,6 +11,7 @@ import {
   type PROptions,
   type Runner,
   type RunnerEvent,
+  type RunnerSnapshot,
   type Task,
   type TaskState,
 } from "@solus/core";
@@ -43,6 +44,7 @@ interface TaskRecord {
   scenario: Scenario | undefined;
   messages: AgentMessage[];
   files: Map<string, DiffFile>;
+  terminal: string[];
   /** Bumped to cancel the script that is playing. */
   scriptGen: number;
   /** Bumped on every state change, to drop stale autopilot actions. */
@@ -100,6 +102,18 @@ export class MockRunner implements Runner {
   }
 
   /* ---------------------------- Runner API ---------------------------- */
+
+  async snapshot(): Promise<RunnerSnapshot> {
+    const records = [...this.records.values()];
+    const byTask = <T>(fn: (r: TaskRecord) => T) =>
+      Object.fromEntries(records.map((r) => [r.task.id, structuredClone(fn(r))]));
+    return {
+      tasks: records.map((r) => structuredClone(r.task)),
+      messages: byTask((r) => r.messages),
+      diffs: byTask((r) => [...r.files.values()]),
+      terminal: byTask((r) => r.terminal),
+    };
+  }
 
   async listTasks(): Promise<Task[]> {
     return [...this.records.values()].map((r) => structuredClone(r.task));
@@ -266,6 +280,7 @@ export class MockRunner implements Runner {
       scenario,
       messages: [],
       files: new Map(),
+      terminal: [],
       scriptGen: 0,
       stateGen: 0,
       autopilot: [...(scenario?.autopilot ?? [])],
@@ -381,6 +396,7 @@ export class MockRunner implements Runner {
 
   private term(rec: TaskRecord, data: string): void {
     const at = this.touch(rec);
+    rec.terminal.push(data);
     this.emit({ type: "terminal.output", taskId: rec.task.id, at, data });
   }
 

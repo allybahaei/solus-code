@@ -5,7 +5,7 @@ Run several coding agents in parallel on one repo, each in its own worktree, and
 ```bash
 pnpm install
 pnpm dev        # daemon + web UI on http://localhost:3000, with tasks in the daemon
-pnpm dev --repo ../some-repo   # same, on a real repo, running your own Claude Code or Codex
+pnpm dev --repo ../some-repo   # same, on a real repo, running your own Claude Code, Codex or OpenCode
 pnpm dev --repo ../some-repo --fake   # a fake agent that edits files, with no model
 pnpm dev:web    # web UI only, with a mock inside the page, for UI work
 pnpm lint && pnpm typecheck && pnpm test
@@ -21,7 +21,7 @@ pnpm lint && pnpm typecheck && pnpm test
 
 ## Using it
 
-Solus runs your own Claude Code and Codex, on your own logins, so usage counts against your plans. Install and sign in to at least one of them, then run this inside a git repo:
+Solus runs your own Claude Code, Codex and OpenCode, on your own logins, so usage counts against your plans (with OpenCode, whichever provider you connected). Install and sign in to at least one of them, then run this inside a git repo:
 
 ```bash
 npx solus-code

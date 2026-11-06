@@ -33,12 +33,13 @@ const healthy = () => ({
   gh: tool("gh", "exit 0"),
   claude: tool("claude", `echo '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"pro"}'`),
   codex: tool("codex", "echo Logged in using ChatGPT"),
+  opencode: tool("opencode", "echo Anthropic stored"),
 });
 
 describe("checkSetup", () => {
   it("reports everything ready, and how Claude will be billed", async () => {
     const { agents, tools } = await checkSetup(healthy());
-    expect(agents.map((a) => a.state)).toEqual(["ready", "ready"]);
+    expect(agents.map((a) => a.state)).toEqual(["ready", "ready", "ready"]);
     expect(tools.map((t) => t.state)).toEqual(["ready", "ready"]);
     expect(agents[0]?.detail).toContain("Claude Pro plan");
     expect(agents[1]?.detail).toBe("Logged in using ChatGPT");
@@ -46,10 +47,11 @@ describe("checkSetup", () => {
 
   it("says how to install what's missing", async () => {
     const nope = join(dir, "nope");
-    const { agents, tools } = await checkSetup({ git: nope, gh: nope, claude: nope, codex: nope });
+    const { agents, tools } = await checkSetup({ git: nope, gh: nope, claude: nope, codex: nope, opencode: nope });
     expect(agents.map((a) => [a.state, a.fix])).toEqual([
       ["missing", "npm i -g @anthropic-ai/claude-code"],
       ["missing", "npm i -g @openai/codex"],
+      ["missing", "npm i -g opencode-ai"],
     ]);
     expect(tools.map((t) => t.state)).toEqual(["missing", "missing"]);
   });
@@ -60,10 +62,12 @@ describe("checkSetup", () => {
       gh: tool("gh", "exit 1"),
       claude: tool("claude", `echo '{"loggedIn":false}'; exit 1`),
       codex: tool("codex", "exit 1"),
+      opencode: tool("opencode", "exit 1"),
     });
     expect(agents.map((a) => [a.state, a.fix])).toEqual([
       ["signed_out", "claude auth login"],
       ["signed_out", "codex login"],
+      ["ready", undefined],
     ]);
     expect(tools[1]).toMatchObject({ state: "signed_out", fix: "gh auth login" });
   });

@@ -14,6 +14,7 @@ export interface SetupCommands {
   gh?: string;
   claude?: string;
   codex?: string;
+  opencode?: string;
 }
 
 interface Run {
@@ -93,13 +94,22 @@ async function checkCodex(command: string): Promise<AgentCheck> {
   return { ...base, state: "ready", detail: result.stdout.trim().split("\n")[0] ?? "Signed in" };
 }
 
+async function checkOpenCode(command: string): Promise<AgentCheck> {
+  const base = { id: "opencode", agent: "opencode", label: "OpenCode" } as const;
+  const result = await run(command, ["auth", "list"]);
+  if (!result.found) return { ...base, state: "missing", fix: "npm i -g opencode-ai" };
+  // Its free models work with no sign-in, so a missing provider isn't a problem.
+  return { ...base, state: "ready", detail: "Billed by whichever provider you connected to OpenCode." };
+}
+
 /** Checks what Solus depends on. Uses no agent usage: everything here is local. */
 export async function checkSetup(commands: SetupCommands = {}): Promise<SetupStatus> {
-  const [git, gh, claude, codex] = await Promise.all([
+  const [git, gh, claude, codex, opencode] = await Promise.all([
     checkGit(commands.git ?? "git"),
     checkGh(commands.gh ?? "gh"),
     checkClaude(commands.claude ?? "claude"),
     checkCodex(commands.codex ?? "codex"),
+    checkOpenCode(commands.opencode ?? "opencode"),
   ]);
-  return { agents: [claude, codex], tools: [git, gh] };
+  return { agents: [claude, codex, opencode], tools: [git, gh] };
 }

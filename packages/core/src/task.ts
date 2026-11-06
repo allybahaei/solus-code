@@ -1,7 +1,7 @@
 import { STATE_PRIORITY, type TaskState } from "./state";
 
 /** Which agent runs the task. */
-export const AGENT_KINDS = ["claude-code", "claude", "codex", "gemini"] as const;
+export const AGENT_KINDS = ["claude-code", "claude", "codex", "opencode", "gemini"] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
 
 /** Epoch milliseconds. Plain numbers so tasks serialize cleanly over the wire. */

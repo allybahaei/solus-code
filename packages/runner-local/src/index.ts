@@ -1,5 +1,6 @@
 export { LocalRunner, type LocalRunnerOptions } from "./local-runner";
 export { ClaudeCodeAdapter, type ClaudeCodeOptions } from "./agents/claude-code";
+export { AcpAdapter, openCodeAdapter, type AcpOptions } from "./agents/acp";
 export { CodexAdapter, type CodexOptions } from "./agents/codex";
 export type { SetupCommands } from "./setup";
 export { FakeAgent } from "./agents/fake";

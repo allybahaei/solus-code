@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 import type { AgentKind } from "@solus/core";
-import { ClaudeCodeAdapter, CodexAdapter, FakeAgent, LocalRunner, UnavailableAgent, type AgentAdapter } from "@solus/runner-local";
+import { ClaudeCodeAdapter, CodexAdapter, FakeAgent, LocalRunner, UnavailableAgent, openCodeAdapter, type AgentAdapter } from "@solus/runner-local";
 import { createMockRunner } from "@solus/runner-mock";
 import { startDaemon } from "./server";
 
@@ -22,17 +22,19 @@ const token = process.env.SOLUS_TOKEN ?? randomBytes(24).toString("hex");
 delete process.env.SOLUS_TOKEN;
 delete process.env.NEXT_PUBLIC_SOLUS_TOKEN;
 
-const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude: "Claude", codex: "Codex", gemini: "Gemini" };
+const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude: "Claude", codex: "Codex", opencode: "OpenCode", gemini: "Gemini" };
 
 /** For installs that aren't on PATH. */
 const claude = process.env.SOLUS_CLAUDE_BIN;
 const codex = process.env.SOLUS_CODEX_BIN;
 const gh = process.env.SOLUS_GH_BIN;
+const opencode = process.env.SOLUS_OPENCODE_BIN;
 
 function adapterFor(agent: AgentKind): AgentAdapter {
   if (values.fake) return new FakeAgent();
   if (agent === "claude-code") return new ClaudeCodeAdapter(claude ? { command: claude } : {});
   if (agent === "codex") return new CodexAdapter(codex ? { command: codex } : {});
+  if (agent === "opencode") return openCodeAdapter(opencode);
   return new UnavailableAgent(LABELS[agent]);
 }
 
@@ -41,7 +43,7 @@ try {
     ? await LocalRunner.open({
         repoPath: values.repo,
         adapterFor,
-        commands: { ...(claude ? { claude } : {}), ...(codex ? { codex } : {}), ...(gh ? { gh } : {}) },
+        commands: { ...(claude ? { claude } : {}), ...(codex ? { codex } : {}), ...(opencode ? { opencode } : {}), ...(gh ? { gh } : {}) },
         ...(process.env.SOLUS_HOME ? { home: process.env.SOLUS_HOME } : {}),
       })
     : createMockRunner({ autopilot: values.autopilot, speed: Number(values.speed) || 1 });

@@ -10,6 +10,7 @@ import type {
   PullRequestStatus,
   TaskSource,
 } from "@solus/core";
+import { useReview } from "@/lib/review-store";
 import { getRunner } from "./runner";
 import { useSolus } from "./store";
 
@@ -45,12 +46,14 @@ export const mergePullRequest = (id: string, strategy: MergeStrategy) => attempt
 export async function fixCheck(id: string, pr: number, check: PullRequestCheck) {
   const log = check.url ? await attempt(() => getRunner().getCheckLog(id, check.url ?? "")) : "";
   const parts = [`The "${check.name}" check failed on pull request #${pr}. Find the cause and fix it.`, check.url, log && `The end of its log:\n\n${log}`];
+  useReview.getState().setView(id, "chat");
   await sendMessage(id, parts.filter(Boolean).join("\n\n"));
 }
 
 /** Sends a review comment to the agent. */
 export async function fixComment(id: string, pr: number, comment: PullRequestComment) {
   const where = comment.path ? ` on ${comment.path}${comment.line ? `:${comment.line}` : ""}` : "";
+  useReview.getState().setView(id, "chat");
   await sendMessage(id, `Address this review comment from ${comment.author} on pull request #${pr}${where}:\n\n${comment.body}`);
 }
 

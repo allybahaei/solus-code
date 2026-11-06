@@ -159,12 +159,20 @@ export class LocalRunner implements Runner {
       rec.task.agent = opts.agent;
       rec.session?.stop();
       delete rec.session;
-      delete rec.agentStarted;
+      delete rec.agentSession;
     }
     this.addMessage(rec, "user", message);
     if (state !== "working") this.setState(rec, "working");
     if (rec.session) rec.session.send(message);
     else void this.launch(rec, message);
+  }
+
+  async answerApproval(id: string, approvalId: string, allow: boolean): Promise<void> {
+    const rec = this.get(id);
+    if (rec.task.approval?.id !== approvalId) throw new Error("That approval is no longer waiting.");
+    this.addMessage(rec, "tool", `${allow ? "Allowed" : "Denied"}: ${rec.task.approval.summary}`, rec.task.approval.tool);
+    this.setState(rec, "working");
+    rec.session?.approve(approvalId, allow);
   }
 
   async stopTask(id: string): Promise<void> {
@@ -218,9 +226,11 @@ export class LocalRunner implements Runner {
       rec.messages = this.store.loadMessages(stored.task.id);
       rec.terminal = this.store.loadTerminal(stored.task.id);
       // Its agent died with the last daemon. Replying starts it again.
-      if (rec.task.state === "working") {
+      if (rec.task.state === "working" || rec.task.approval) {
         rec.task.state = "stuck";
         rec.task.error = { message: "Solus restarted while this task was running" };
+        delete rec.task.question;
+        delete rec.task.approval;
       }
       if (rec.worktree && existsSync(rec.worktree)) {
         try {
@@ -243,11 +253,11 @@ export class LocalRunner implements Runner {
 
   private save() {
     this.store.saveTasks(
-      [...this.records.values()].map(({ task, worktree, setupDone, agentStarted }) => ({
+      [...this.records.values()].map(({ task, worktree, setupDone, agentSession }) => ({
         task,
         ...(worktree ? { worktree } : {}),
         ...(setupDone ? { setupDone } : {}),
-        ...(agentStarted ? { agentStarted } : {}),
+        ...(agentSession ? { agentSession } : {}),
       })),
     );
   }
@@ -266,11 +276,12 @@ export class LocalRunner implements Runner {
     return (rec.task.lastActivityAt = Date.now());
   }
 
-  private setState(rec: Rec, to: TaskState, extra: Pick<Partial<Task>, "question" | "error"> = {}) {
+  private setState(rec: Rec, to: TaskState, extra: Pick<Partial<Task>, "question" | "error" | "approval"> = {}) {
     const from = rec.task.state;
     assertTransition(from, to);
     rec.task.state = to;
     delete rec.task.question;
+    delete rec.task.approval;
     delete rec.task.error;
     Object.assign(rec.task, extra);
     const at = this.touch(rec);
@@ -322,13 +333,11 @@ export class LocalRunner implements Runner {
       if (abandoned()) return;
       const cwd = rec.worktree as string;
       // An agent that never ran has no session to resume, and hasn't seen the task.
-      const resume = rec.agentStarted === true;
+      const session = rec.agentSession;
       const { prompt: task } = rec.task;
-      const prompt = resume || message === task ? message : `${task}\n\n${message}`;
-      rec.agentStarted = true;
-      this.save();
+      const prompt = session || message === task ? message : `${task}\n\n${message}`;
       rec.session = this.adapterFor(rec.task.agent).start(
-        { taskId: rec.task.id, cwd, prompt, resume },
+        { taskId: rec.task.id, cwd, prompt, ...(session ? { session } : {}) },
         (event) => {
           if (!abandoned()) rec.queue = rec.queue.then(() => this.onAgentEvent(rec, event));
         },
@@ -375,8 +384,20 @@ export class LocalRunner implements Runner {
         case "files_changed":
           await this.refreshDiff(rec);
           break;
+        case "session":
+          rec.agentSession = event.id;
+          this.save();
+          break;
         case "ask":
           if (rec.task.state === "working") this.setState(rec, "needs_input", { question: event.question });
+          break;
+        case "approval":
+          if (rec.task.state === "working") {
+            this.setState(rec, "needs_input", {
+              question: `Allow ${event.tool}?`,
+              approval: { id: event.id, tool: event.tool, summary: event.summary },
+            });
+          }
           break;
         case "turn_end":
           await this.refreshDiff(rec);

@@ -1,5 +1,5 @@
 // `pnpm dev`: the daemon and the web app together, sharing a fresh token.
-// Flags: --repo <path> (real git, fake agent), --port <web port>, --daemon-port <port>,
+// Flags: --repo <path> (a real repo; add --fake for the fake agent), --port <web port>, --daemon-port <port>,
 // and for the mock: --autopilot, --speed <n>
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -9,6 +9,7 @@ import { parseArgs } from "node:util";
 const { values } = parseArgs({
   options: {
     repo: { type: "string" },
+    fake: { type: "boolean", default: false },
     port: { type: "string", default: "3000" },
     "daemon-port": { type: "string", default: "4317" },
     autopilot: { type: "boolean", default: false },
@@ -30,6 +31,7 @@ const daemonArgs = [
   "--speed", values.speed,
   ...(values.autopilot ? ["--autopilot"] : []),
   ...(values.repo ? ["--repo", resolve(values.repo)] : []),
+  ...(values.fake ? ["--fake"] : []),
 ];
 const children = [
   spawn("pnpm", ["--filter", "@solus/daemon", "dev", ...daemonArgs], { env, stdio: "inherit" }),

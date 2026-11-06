@@ -60,6 +60,8 @@ export interface Runner {
    * Passing `agent` hands the task to a different agent from this message on.
    */
   sendMessage(id: string, message: string, opts?: { agent?: AgentKind }): Promise<void>;
+  /** Answers the task's pending approval. To deny with a reason, use sendMessage. */
+  answerApproval(id: string, approvalId: string, allow: boolean): Promise<void>;
   stopTask(id: string): Promise<void>;
   getDiff(id: string): Promise<Diff>;
   merge(id: string, opts: MergeOptions): Promise<void>;

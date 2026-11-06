@@ -9,8 +9,8 @@ export interface StoredTask {
   worktree?: string;
   /** The repo's setup command has finished in this worktree. */
   setupDone?: boolean;
-  /** An agent has run here, so there's a session to resume. */
-  agentStarted?: boolean;
+  /** The agent's own session id, once it has run, for resuming. */
+  agentSession?: string;
 }
 
 /** Reads a JSONL file, skipping a last line left half-written by a crash. */

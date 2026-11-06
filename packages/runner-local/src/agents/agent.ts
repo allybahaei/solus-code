@@ -8,8 +8,12 @@ export type AgentEvent =
   | { type: "terminal"; data: string }
   /** Files in the worktree may have changed. */
   | { type: "files_changed" }
-  /** The agent needs the user. Their reply arrives through send(). */
+  /** The agent's id for this conversation, to resume it later. */
+  | { type: "session"; id: string }
+  /** The agent has a question. The reply arrives through send(). */
   | { type: "ask"; question: string }
+  /** The agent wants to run something and is waiting for approve() or send(). */
+  | { type: "approval"; id: string; tool: string; summary: string }
   /** The agent finished its turn. */
   | { type: "turn_end" }
   /** The agent can't continue. The session is over. */
@@ -21,13 +25,15 @@ export interface AgentStart {
   cwd: string;
   /** The first message for this session. */
   prompt: string;
-  /** True when continuing an earlier session rather than starting fresh. */
-  resume: boolean;
+  /** The session to continue. Absent when starting fresh. */
+  session?: string;
 }
 
 /** One running conversation with an agent. */
 export interface AgentSession {
+  /** A message from the user. With an approval pending, it denies with that reason. */
   send(message: string): void;
+  approve(id: string, allow: boolean): void;
   stop(): void;
 }
 

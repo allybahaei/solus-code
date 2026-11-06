@@ -80,6 +80,8 @@ export class RemoteRunner implements Runner {
   startTask = (id: string) => this.run("startTask", id);
   sendMessage = (id: string, message: string, opts?: { agent?: AgentKind }) =>
     this.run("sendMessage", id, message, opts ?? {});
+  answerApproval = (id: string, approvalId: string, allow: boolean) =>
+    this.run("answerApproval", id, approvalId, allow);
   stopTask = (id: string) => this.run("stopTask", id);
   getDiff = (id: string) => this.call<Diff>("getDiff", id);
   merge = (id: string, opts: MergeOptions) => this.run("merge", id, opts);

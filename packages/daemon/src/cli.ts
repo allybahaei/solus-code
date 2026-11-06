@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
-import { FakeAgent, LocalRunner } from "@solus/runner-local";
+import type { AgentKind } from "@solus/core";
+import { ClaudeCodeAdapter, FakeAgent, LocalRunner, UnavailableAgent, type AgentAdapter } from "@solus/runner-local";
 import { createMockRunner } from "@solus/runner-mock";
 import { startDaemon } from "./server";
 
@@ -9,6 +10,8 @@ const { values } = parseArgs({
     port: { type: "string", default: "4317" },
     /** A real repo. Without it the daemon serves the mock. */
     repo: { type: "string" },
+    /** Use the fake agent, which edits files with no model. */
+    fake: { type: "boolean", default: false },
     autopilot: { type: "boolean", default: false },
     speed: { type: "string", default: "1" },
   },
@@ -16,17 +19,24 @@ const { values } = parseArgs({
 
 const token = process.env.SOLUS_TOKEN ?? randomBytes(24).toString("hex");
 
+const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude: "Claude", codex: "Codex", gemini: "Gemini" };
+
+function adapterFor(agent: AgentKind): AgentAdapter {
+  if (values.fake) return new FakeAgent();
+  return agent === "claude-code" ? new ClaudeCodeAdapter() : new UnavailableAgent(LABELS[agent]);
+}
+
 try {
   const runner = values.repo
     ? await LocalRunner.open({
         repoPath: values.repo,
-        adapterFor: () => new FakeAgent(),
+        adapterFor,
         ...(process.env.SOLUS_HOME ? { home: process.env.SOLUS_HOME } : {}),
       })
     : createMockRunner({ autopilot: values.autopilot, speed: Number(values.speed) || 1 });
 
   const daemon = await startDaemon({ runner, token, port: Number(values.port) });
-  console.log(`Solus daemon on 127.0.0.1:${daemon.port} (${values.repo ? `${values.repo}, fake agent` : "mock runner"})`);
+  console.log(`Solus daemon on 127.0.0.1:${daemon.port} (${values.repo ? `${values.repo}${values.fake ? ", fake agent" : ""}` : "mock runner"})`);
 
   const stop = () => {
     runner.dispose();

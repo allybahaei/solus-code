@@ -19,6 +19,14 @@ export interface TaskError {
   detail?: string;
 }
 
+/** A tool call waiting for the user's yes or no. */
+export interface ApprovalRequest {
+  id: string;
+  tool: string;
+  /** What it wants to do, such as the shell command. */
+  summary: string;
+}
+
 export interface PullRequestRef {
   url: string;
   number: number;
@@ -42,6 +50,8 @@ export interface Task {
   lastActivityAt: Timestamp;
   /** Set while state is needs_input: what the agent is asking. */
   question?: string;
+  /** Set while state is needs_input and the agent is asking to run something. */
+  approval?: ApprovalRequest;
   /** Set while state is stuck: why. */
   error?: TaskError;
   /** Set once merged through a pull request. */

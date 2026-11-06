@@ -8,6 +8,10 @@ export default defineConfig([
   js.configs.recommended,
   ...tseslint.configs.strict,
   {
+    files: ["**/*.mjs"],
+    languageOptions: { globals: { process: "readonly" } },
+  },
+  {
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",
     },

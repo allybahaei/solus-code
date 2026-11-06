@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskState } from "@solus/core";
+import type { AgentAdapter } from "./agents/agent";
 import { FakeAgent } from "./agents/fake";
 import { parseDiff, readDiff } from "./diff";
 import { nameFromRemote } from "./git";
@@ -287,4 +288,47 @@ describe("reading diffs", () => {
 it("makes safe slugs", () => {
   expect(slugify("Fix: the/odd ../ title!")).toBe("fix-the-odd-title");
   expect(slugify("???")).toBe("task");
+});
+
+describe("approvals", () => {
+  const approving = (): AgentAdapter => ({
+    start(_options, emit) {
+      emit({ type: "session", id: "s1" });
+      queueMicrotask(() => emit({ type: "approval", id: "a1", tool: "Bash", summary: "rm -rf build" }));
+      return {
+        send() {},
+        approve(_id, allow) {
+          emit({ type: "tool", tool: "Bash", text: allow ? "ran" : "skipped" });
+          emit({ type: "turn_end" });
+        },
+        stop() {},
+      };
+    },
+  });
+
+  it("shows an approval as needs_input and continues once answered", async () => {
+    runner = await LocalRunner.open({ repoPath: repo, home, adapterFor: approving });
+    const t = await newTask(runner, "Risky");
+    await runner.startTask(t.id);
+    await reaches(runner, t.id, "needs_input");
+    expect((await task(runner, t.id))?.approval).toEqual({ id: "a1", tool: "Bash", summary: "rm -rf build" });
+
+    await expect(runner.answerApproval(t.id, "other", true)).rejects.toThrow(/no longer waiting/);
+    await runner.answerApproval(t.id, "a1", true);
+    await reaches(runner, t.id, "ready_for_review");
+    expect((await task(runner, t.id))?.approval).toBeUndefined();
+    expect((await runner.getMessages(t.id)).map((m) => m.text)).toContain("Allowed: rm -rf build");
+  });
+
+  it("can't resume a pending approval after a restart, so goes stuck", async () => {
+    const first = await LocalRunner.open({ repoPath: repo, home, adapterFor: approving });
+    const t = await newTask(first, "Risky");
+    await first.startTask(t.id);
+    await reaches(first, t.id, "needs_input");
+    first.dispose();
+
+    const r = await open();
+    expect(await task(r, t.id)).toMatchObject({ state: "stuck" });
+    expect((await task(r, t.id))?.approval).toBeUndefined();
+  });
 });

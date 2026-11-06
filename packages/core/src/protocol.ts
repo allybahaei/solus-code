@@ -14,6 +14,7 @@ export const RUNNER_METHODS = [
   "createTask",
   "startTask",
   "sendMessage",
+  "answerApproval",
   "stopTask",
   "getDiff",
   "merge",

@@ -8,8 +8,8 @@ import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent
  * Stands in for a real agent so the workspace, diff and storage code can be
  * tested for real. It edits real files, and its messages say that it's fake.
  *
- * Put these in a prompt to steer it: "[ask]" asks a question first, "[fail]"
- * errors out on its first attempt.
+ * Put these in a prompt to steer it: "[ask]" asks a question first, "[approve]"
+ * asks to run a command first, "[fail]" errors out on its first attempt.
  */
 export class FakeAgent implements AgentAdapter {
   constructor(private readonly stepMs = 300) {}
@@ -28,11 +28,17 @@ class FakeSession implements AgentSession {
     private readonly emit: (event: AgentEvent) => void,
     private readonly stepMs: number,
   ) {
+    emit({ type: "session", id: options.session ?? `fake-${options.taskId}` });
     void this.turn(options.prompt);
   }
 
   send(message: string): void {
     void this.edit(message);
+  }
+
+  approve(_id: string, allow: boolean): void {
+    this.say(`(Fake agent) ${allow ? "Allowed, carrying on." : "Denied, so I'll skip that."}`);
+    void this.edit(this.options.prompt);
   }
 
   stop(): void {
@@ -50,12 +56,16 @@ class FakeSession implements AgentSession {
   private async turn(prompt: string) {
     await this.sleep();
     if (this.stopped) return;
-    if (prompt.includes("[fail]") && !this.options.resume) {
+    if (prompt.includes("[fail]") && !this.options.session) {
       this.say("(Fake agent) Failing on purpose.");
       this.emit({ type: "error", error: { message: "The fake agent failed on purpose", detail: "The prompt contained [fail]." } });
       return;
     }
-    if (prompt.includes("[ask]") && !this.options.resume) {
+    if (prompt.includes("[approve]") && !this.options.session) {
+      this.emit({ type: "approval", id: "fake-approval", tool: "Bash", summary: "rm -rf build" });
+      return;
+    }
+    if (prompt.includes("[ask]") && !this.options.session) {
       this.emit({ type: "ask", question: "(Fake agent) What should the note say?" });
       return;
     }

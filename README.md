@@ -5,7 +5,8 @@ Run several coding agents in parallel on one repo, each in its own worktree, and
 ```bash
 pnpm install
 pnpm dev        # daemon + web UI on http://localhost:3000, with tasks in the daemon
-pnpm dev --repo ../some-repo   # same, on a real git repo, with a fake agent for now
+pnpm dev --repo ../some-repo   # same, on a real repo, running your own Claude Code
+pnpm dev --repo ../some-repo --fake   # a fake agent that edits files, with no model
 pnpm dev:web    # web UI only, with a mock inside the page, for UI work
 pnpm lint && pnpm typecheck && pnpm test
 ```

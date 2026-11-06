@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUp, CircleAlert, MessageCircleQuestion, Play } from "lucide-react";
+import { ArrowUp, CircleAlert, MessageCircleQuestion, Play, ShieldQuestion } from "lucide-react";
 import type { AgentKind, Task } from "@solus/core";
 import { AgentPicker } from "@/components/agent-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { sendMessage, startTask } from "@/lib/actions";
+import { answerApproval, sendMessage, startTask } from "@/lib/actions";
 import { useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,8 @@ export function Composer({ task }: { task: Task }) {
   // The agent for the next message. Composer is keyed by task, so this resets per task.
   const [agent, setAgent] = useState<AgentKind>(task.agent);
 
+  const approvalId = task.approval?.id ?? "";
+
   const send = () => {
     const message = text.trim();
     if (!message || disabled || !connected) return;
@@ -42,10 +44,25 @@ export function Composer({ task }: { task: Task }) {
   return (
     <div className="shrink-0 px-4 pb-4">
       <div className="w-full">
-        {task.state === "needs_input" && task.question && (
-          <Banner tone="needs_input" icon={<MessageCircleQuestion />} title="The agent is asking">
-            {task.question}
+        {task.approval ? (
+          <Banner tone="needs_input" icon={<ShieldQuestion />} title={`Allow ${task.approval.tool}?`}>
+            <code className="block font-mono text-xs break-all whitespace-pre-wrap">{task.approval.summary}</code>
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" disabled={!connected} onClick={() => answerApproval(task.id, approvalId, true)}>
+                Allow
+              </Button>
+              <Button size="sm" variant="outline" disabled={!connected} onClick={() => answerApproval(task.id, approvalId, false)}>
+                Deny
+              </Button>
+            </div>
           </Banner>
+        ) : (
+          task.state === "needs_input" &&
+          task.question && (
+            <Banner tone="needs_input" icon={<MessageCircleQuestion />} title="The agent is asking">
+              {task.question}
+            </Banner>
+          )
         )}
         {task.state === "stuck" && task.error && (
           <Banner tone="stuck" icon={<CircleAlert />} title={task.error.message}>
@@ -81,7 +98,7 @@ export function Composer({ task }: { task: Task }) {
                 }
                 if (e.key === "Escape") e.currentTarget.blur();
               }}
-              placeholder={PLACEHOLDER[task.state]}
+              placeholder={task.approval ? "Or say what to do instead…" : PLACEHOLDER[task.state]}
               rows={4}
               className="max-h-80 min-h-28 resize-none border-0 bg-transparent px-3.5 pt-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
             />

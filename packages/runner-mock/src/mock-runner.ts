@@ -185,6 +185,10 @@ export class MockRunner implements Runner {
     }
   }
 
+  async answerApproval(id: string): Promise<void> {
+    throw new Error(`Task ${id} has nothing to approve; the mock never asks.`);
+  }
+
   async stopTask(id: string): Promise<void> {
     const rec = this.get(id);
     if (rec.task.state !== "working") return;

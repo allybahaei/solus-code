@@ -15,6 +15,8 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
 }
 
 export const startTask = (id: string) => attempt(() => getRunner().startTask(id));
+export const answerApproval = (id: string, approvalId: string, allow: boolean) =>
+  attempt(() => getRunner().answerApproval(id, approvalId, allow));
 export const stopTask = (id: string) => attempt(() => getRunner().stopTask(id));
 export function sendMessage(id: string, text: string, agent?: AgentKind) {
   const task = useSolus.getState().tasks[id];

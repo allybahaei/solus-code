@@ -44,3 +44,7 @@ These need checking in 2d before relying on them.
 - **Codex in a real worktree.** A worktree's git data lives outside its folder, so `git commit` may fail in the sandbox. Solus can commit for it.
 - **The safe-command allowlist** for Claude Code.
 - **Whether a subscription or API billing was used** can't be read from these recordings alone. The Claude `five_hour` rate-limit event suggests a subscription. First-run checks should confirm this properly.
+
+## Decided since
+
+- **A long human wait:** `ask_user` no longer blocks. It returns at once and tells the agent to end its turn, and the answer arrives as the next message, so no tool timeout applies. Approvals must block, so the adapter sets `MCP_TOOL_TIMEOUT` to a day; whether Claude Code honours that for long waits is checked in the first real run.

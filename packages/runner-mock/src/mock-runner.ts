@@ -189,6 +189,14 @@ export class MockRunner implements Runner {
     throw new Error(`Task ${id} has nothing to approve; the mock never asks.`);
   }
 
+  async writeTerminal(): Promise<void> {
+    // The mock's terminal only shows scripted output.
+  }
+
+  async resizeTerminal(): Promise<void> {
+    // Nothing to resize.
+  }
+
   async stopTask(id: string): Promise<void> {
     const rec = this.get(id);
     if (rec.task.state !== "working") return;

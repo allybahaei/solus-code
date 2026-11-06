@@ -25,6 +25,7 @@ import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { readDiff } from "./diff";
 import { readRepo } from "./git";
 import { commitAll, createPullRequest, mergeBranch, removeWorkspace } from "./merge";
+import { WorkspaceShell, type ShellSize } from "./shell";
 import { TaskStore, type StoredTask } from "./store";
 import { SetupError, copyFiles, createWorktree, readRepoConfig, runSetup, slugify, uniqueBranch } from "./workspace";
 
@@ -45,6 +46,9 @@ interface Rec extends StoredTask {
   terminal: string[];
   files: DiffFile[];
   session?: AgentSession;
+  shell?: WorkspaceShell;
+  /** The terminal's size, for when the shell starts. */
+  size: ShellSize;
   /** Bumped to abandon a launch that is still preparing. */
   launch: number;
   abort?: AbortController;
@@ -53,6 +57,9 @@ interface Rec extends StoredTask {
   /** Agent events for this task, handled strictly in order. */
   queue: Promise<void>;
 }
+
+/** How much terminal history to keep per task, for reloads. */
+const TERMINAL_CHUNKS = 5000;
 
 const repoKey = (root: string) =>
   `${slugify(root.split("/").at(-1) ?? "repo")}-${createHash("sha256").update(root).digest("hex").slice(0, 8)}`;
@@ -101,6 +108,7 @@ export class LocalRunner implements Runner {
       rec.launch++;
       rec.abort?.abort();
       rec.session?.stop();
+      rec.shell?.kill();
     }
     this.listeners.clear();
   }
@@ -196,6 +204,19 @@ export class LocalRunner implements Runner {
     this.setState(rec, "stuck", { error: { message: "Stopped by you" } });
   }
 
+  async writeTerminal(id: string, data: string): Promise<void> {
+    const rec = this.get(id);
+    if (!rec.worktree || !existsSync(rec.worktree)) return;
+    rec.shell ??= this.startShell(rec, rec.worktree);
+    if (data) rec.shell.write(data);
+  }
+
+  async resizeTerminal(id: string, cols: number, rows: number): Promise<void> {
+    const rec = this.get(id);
+    rec.size = { cols, rows };
+    rec.shell?.resize(rec.size);
+  }
+
   async getDiff(id: string): Promise<Diff> {
     const rec = this.get(id);
     return {
@@ -274,6 +295,21 @@ export class LocalRunner implements Runner {
     rec.launch++;
     rec.session?.stop();
     delete rec.session;
+    rec.shell?.kill();
+    delete rec.shell;
+  }
+
+  private startShell(rec: Rec, cwd: string): WorkspaceShell {
+    const shell = new WorkspaceShell(
+      cwd,
+      rec.size,
+      // Not saved to disk: anything can pass through an interactive shell.
+      (data) => this.term(rec, data, false),
+      () => {
+        if (rec.shell === shell) delete rec.shell;
+      },
+    );
+    return shell;
   }
 
   /** The merge has already happened, so a failed clean-up is only worth a note. */
@@ -302,7 +338,16 @@ export class LocalRunner implements Runner {
   }
 
   private newRecord(stored: StoredTask): Rec {
-    return { ...stored, messages: [], streaming: new Map(), terminal: [], files: [], launch: 0, queue: Promise.resolve() };
+    return {
+      ...stored,
+      messages: [],
+      streaming: new Map(),
+      terminal: [],
+      files: [],
+      size: { cols: 80, rows: 24 },
+      launch: 0,
+      queue: Promise.resolve(),
+    };
   }
 
   private async restore() {
@@ -397,10 +442,11 @@ export class LocalRunner implements Runner {
     });
   }
 
-  private term(rec: Rec, data: string) {
+  private term(rec: Rec, data: string, save = true) {
     const at = this.touch(rec);
     rec.terminal.push(data);
-    this.store.appendTerminal(rec.task.id, data);
+    if (rec.terminal.length > TERMINAL_CHUNKS) rec.terminal.splice(0, rec.terminal.length - TERMINAL_CHUNKS);
+    if (save) this.store.appendTerminal(rec.task.id, data);
     this.emit({ type: "terminal.output", taskId: rec.task.id, at, data });
   }
 

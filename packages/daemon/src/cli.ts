@@ -18,6 +18,9 @@ const { values } = parseArgs({
 });
 
 const token = process.env.SOLUS_TOKEN ?? randomBytes(24).toString("hex");
+// Shells and agents inherit this environment and have no use for the token.
+delete process.env.SOLUS_TOKEN;
+delete process.env.NEXT_PUBLIC_SOLUS_TOKEN;
 
 const LABELS: Record<AgentKind, string> = { "claude-code": "Claude Code", claude: "Claude", codex: "Codex", gemini: "Gemini" };
 

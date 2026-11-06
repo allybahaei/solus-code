@@ -16,6 +16,8 @@ export const RUNNER_METHODS = [
   "sendMessage",
   "answerApproval",
   "stopTask",
+  "writeTerminal",
+  "resizeTerminal",
   "getDiff",
   "merge",
   "openPullRequest",

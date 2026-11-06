@@ -17,6 +17,13 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
 export const startTask = (id: string) => attempt(() => getRunner().startTask(id));
 export const answerApproval = (id: string, approvalId: string, allow: boolean) =>
   attempt(() => getRunner().answerApproval(id, approvalId, allow));
+/** Terminal traffic is too frequent for notices; a failed keystroke just drops. */
+export const writeTerminal = (id: string, data: string) => {
+  getRunner().writeTerminal(id, data).catch(() => {});
+};
+export const resizeTerminal = (id: string, cols: number, rows: number) => {
+  getRunner().resizeTerminal(id, cols, rows).catch(() => {});
+};
 export const stopTask = (id: string) => attempt(() => getRunner().stopTask(id));
 export function sendMessage(id: string, text: string, agent?: AgentKind) {
   const task = useSolus.getState().tasks[id];

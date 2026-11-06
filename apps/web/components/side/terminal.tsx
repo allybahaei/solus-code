@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import type { Task } from "@solus/core";
+import { resizeTerminal, writeTerminal } from "@/lib/actions";
 import { useSolus } from "@/lib/store";
 
 /** Resolves any CSS colour (oklch, light-dark(), var()) to #rrggbb, which xterm needs. */
@@ -37,7 +38,7 @@ function themeFrom(el: HTMLElement) {
   };
 }
 
-/** The task's terminal, streamed from runner terminal.output events. Read-only for now. */
+/** The task's terminal: agent commands, plus a real shell in its worktree once you click in. */
 export function TerminalView({ task }: { task: Task }) {
   const hostRef = useRef<HTMLDivElement>(null);
 
@@ -55,8 +56,7 @@ export function TerminalView({ task }: { task: Task }) {
         fontFamily: getComputedStyle(host).getPropertyValue("--font-geist-mono") || "monospace",
         fontSize: 12,
         lineHeight: 1.35,
-        cursorBlink: false,
-        disableStdin: true,
+        cursorBlink: true,
         convertEol: false,
         scrollback: 5000,
         theme: themeFrom(host),
@@ -80,6 +80,13 @@ export function TerminalView({ task }: { task: Task }) {
       flush(useSolus.getState().terminal[task.id]);
       const unsubscribe = useSolus.subscribe((s) => flush(s.terminal[task.id]));
 
+      // Keystrokes go to the worktree's shell, which starts when the terminal gets focus.
+      const input = term.onData((data) => writeTerminal(task.id, data));
+      const startShell = () => writeTerminal(task.id, "");
+      term.textarea?.addEventListener("focus", startShell);
+      const sizing = term.onResize(({ cols, rows }) => resizeTerminal(task.id, cols, rows));
+      resizeTerminal(task.id, term.cols, term.rows);
+
       const resize = new ResizeObserver(() => fit.fit());
       resize.observe(host);
 
@@ -89,6 +96,9 @@ export function TerminalView({ task }: { task: Task }) {
 
       cleanup = () => {
         unsubscribe();
+        input.dispose();
+        sizing.dispose();
+        term.textarea?.removeEventListener("focus", startShell);
         resize.disconnect();
         scheme.removeEventListener("change", retheme);
         term.dispose();

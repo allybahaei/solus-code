@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import { createInterface } from "node:readline";
 import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
@@ -62,6 +63,9 @@ interface Pending {
   options: PermissionOption[];
 }
 
+/** Cursor's titles are Markdown, with the whole command in backticks. */
+const plain = (title: string) => title.replace(/^`(.*)`$/s, "$1");
+
 /** Runs an agent's own CLI through the Agent Client Protocol: one process, many turns. */
 export class AcpAdapter implements AgentAdapter {
   constructor(private readonly options: AcpOptions) {}
@@ -78,12 +82,13 @@ class AcpSession implements AgentSession {
   private readonly waiting = new Map<number, { resolve: (r: Record<string, unknown>) => void; reject: (e: RpcError) => void }>();
   private readonly calls = new Map<string, ToolCall>();
   private readonly approvals = new Map<string, Pending>();
+  /** Cursor reports a refused call as completed, so Solus has to remember. */
+  private readonly refused = new Set<string>();
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
   private nextId = 0;
   private sessionId: string | undefined;
   /** The message being streamed, to close when the next thing starts. */
   private openText: string | undefined;
-  private textCount = 0;
   /** session/load replays the whole history, which has already been shown. */
   private replaying = false;
   private turning = false;
@@ -129,6 +134,7 @@ class AcpSession implements AgentSession {
     const pending = this.approvals.get(id);
     if (!pending) return;
     this.approvals.delete(id);
+    if (!allow) this.refused.add(id);
     const kinds = allow ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
     const option = kinds.map((k) => pending.options.find((o) => o.kind === k)).find(Boolean);
     this.write({
@@ -240,7 +246,7 @@ class AcpSession implements AgentSession {
       case "agent_message_chunk": {
         const chunk = update.content?.text;
         if (!chunk) return;
-        const id = update.messageId ?? this.openText ?? `acp-${++this.textCount}`;
+        const id = update.messageId ?? this.openText ?? `acp-${randomUUID()}`;
         if (id !== this.openText) this.closeText();
         this.openText = id;
         this.emit({ type: "text", id, chunk, done: false });
@@ -252,7 +258,8 @@ class AcpSession implements AgentSession {
         const id = update.toolCallId as string;
         const call = { ...this.calls.get(id), ...update, toolCallId: id };
         this.calls.set(id, call);
-        if (update.status === "completed" || update.status === "failed") this.toolDone(call);
+        const finished = update.status === "completed" || update.status === "failed";
+        if (finished && !this.refused.has(id)) this.toolDone(call);
         return;
       }
     }
@@ -260,7 +267,7 @@ class AcpSession implements AgentSession {
 
   private toolDone(call: ToolCall) {
     const path = call.rawInput?.path ?? call.rawInput?.filePath;
-    const text = call.rawInput?.command ?? (path ? relative(this.start.cwd, path) : (call.title ?? call.name ?? "tool"));
+    const text = plain(call.rawInput?.command ?? (path ? relative(this.start.cwd, path) : (call.title ?? call.name ?? "tool")));
     const failed = call.status === "failed";
     this.emit({ type: "tool", tool: call.name ?? call.kind ?? "tool", text: failed ? `Failed: ${text}` : text });
     // A refused command never ran, so it doesn't belong in the terminal.
@@ -273,6 +280,8 @@ class AcpSession implements AgentSession {
     const { toolCall, options } = params;
     const pending = { rpc: message.id as number, options };
     const id = toolCall.toolCallId;
+    // This has the real command, which a refusal's update may not repeat.
+    this.calls.set(id, { ...this.calls.get(id), ...toolCall });
     this.approvals.set(id, pending);
     // Its own question to the person never needs a second yes.
     if (/ask_user/.test(toolCall.name ?? toolCall.title ?? "")) {
@@ -286,7 +295,7 @@ class AcpSession implements AgentSession {
       type: "approval",
       id,
       tool: toolCall.name ?? toolCall.kind ?? "tool",
-      summary: toolCall.rawInput?.command ?? toolCall.title ?? "Run a tool",
+      summary: plain(toolCall.rawInput?.command ?? toolCall.title ?? "Run a tool"),
     });
   }
 

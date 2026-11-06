@@ -37,7 +37,7 @@ function askThroughBridge(question) {
 
 function askPermission(command) {
   const id = ++permissionId;
-  const toolCall = { toolCallId: "call-1", name: "shell", kind: "execute", title: command, status: "pending", rawInput: { command } };
+  const toolCall = { toolCallId: "call-1", kind: "execute", title: `\`${command}\``, status: "pending" };
   update({ sessionUpdate: "tool_call", ...toolCall, title: "shell" });
   out({ id, method: "session/request_permission", params: { sessionId: "ses-1", toolCall, options } });
   return new Promise((resolve) => permissions.set(id, resolve));
@@ -61,12 +61,15 @@ async function prompt(id, text) {
     if (outcome.optionId === "once") {
       update({ sessionUpdate: "tool_call_update", toolCallId: "call-1", status: "completed", title: "curl example.com" });
     } else {
-      update({ sessionUpdate: "tool_call_update", toolCallId: "call-1", status: "failed" });
+      // As Cursor does: a refused command still ends as completed, though it never ran.
+      update({ sessionUpdate: "tool_call_update", toolCallId: "call-1", status: "completed" });
     }
   }
   update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "hmm" } });
-  update({ sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "Hel" } });
-  update({ sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "lo" } });
+  // Cursor sends no message ids.
+  const messageId = text.includes("[no-id]") ? {} : { messageId: "m1" };
+  update({ sessionUpdate: "agent_message_chunk", ...messageId, content: { type: "text", text: "Hel" } });
+  update({ sessionUpdate: "agent_message_chunk", ...messageId, content: { type: "text", text: "lo" } });
   out({ id, result: { stopReason: text.includes("[refuse]") ? "refusal" : "end_turn" } });
 }
 

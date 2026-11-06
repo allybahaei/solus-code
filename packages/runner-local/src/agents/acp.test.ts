@@ -71,6 +71,19 @@ describe("AcpAdapter", () => {
     expect(events.at(-1)).toMatchObject({ error: { detail: expect.stringContaining("stand-in login") } });
   });
 
+  it("keeps messages without ids apart, even across restarts", async () => {
+    const ids = async () => {
+      const { events, until } = run("[no-id]", { session: "ses-1" });
+      await until("turn_end");
+      session?.stop();
+      return new Set(events.flatMap((e) => (e.type === "text" ? [e.id] : [])));
+    };
+    const [first, second] = [await ids(), await ids()];
+    expect(first.size).toBe(1);
+    expect(second.size).toBe(1);
+    expect([...first][0]).not.toBe([...second][0]);
+  });
+
   it("takes follow-ups in the same session", async () => {
     const { events, until } = run("One");
     await until("turn_end");
@@ -96,14 +109,14 @@ describe("AcpAdapter", () => {
   it("holds an approval until the person answers, then allows it", async () => {
     const { events, until } = run("[approve]", { stallMs: 200 });
     await until("approval");
-    expect(events.find((e) => e.type === "approval")).toMatchObject({ id: "call-1", tool: "shell", summary: "curl example.com" });
+    expect(events.find((e) => e.type === "approval")).toMatchObject({ id: "call-1", tool: "execute", summary: "curl example.com" });
     // Longer than the stall limit: waiting for a person isn't stalling.
     await new Promise((r) => setTimeout(r, 300));
     expect(events.map((e) => e.type)).not.toContain("error");
     session?.approve("call-1", true);
     await until("turn_end");
     expect(log().find((l) => l.decision)?.decision?.optionId).toBe("once");
-    expect(events).toContainEqual({ type: "tool", tool: "shell", text: "curl example.com" });
+    expect(events).toContainEqual({ type: "tool", tool: "execute", text: "curl example.com" });
     expect(events).toContainEqual({ type: "terminal", data: "$ curl example.com\r\n" });
     expect(events.map((e) => e.type)).toContain("files_changed");
   });
@@ -115,7 +128,8 @@ describe("AcpAdapter", () => {
     await vi.waitFor(() => expect(log().at(-1)?.prompt).toBe("Use wget instead"), { timeout: 5000 });
     expect(log().find((l) => l.decision)?.decision?.optionId).toBe("reject");
     await until("turn_end");
-    expect(events).toContainEqual({ type: "tool", tool: "shell", text: "Failed: curl example.com" });
+    // It never ran, so it mustn't be logged as a tool call or a terminal command.
+    expect(events.map((e) => e.type)).not.toContain("tool");
     expect(events.map((e) => e.type)).not.toContain("terminal");
   });
 

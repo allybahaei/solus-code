@@ -13,4 +13,12 @@ Tried in a throwaway repo on a free model.
 
 # Cursor
 
-Not run yet: the CLI isn't installed here. Its docs give `agent acp` over stdio, so it uses the same adapter. Older installs call the command `cursor-agent`. Solus shows Cursor only when `status` output looks like Cursor's own, and that check is based on the docs rather than a real run.
+Its docs give `agent acp` over stdio, so it uses the same adapter. The installer creates both `agent` and `cursor-agent` in `~/.local/bin`, which is often not on PATH. Solus shows Cursor only when `status` output looks like Cursor's own.
+
+Later run live through Solus, on `2026.11.05-86047df`:
+
+- `authenticate { methodId: "cursor_login" }` is required before `session/new`, even when signed in.
+- Commands ask through `session/request_permission`. Edits inside the worktree don't.
+- A refused command never runs (checked with `touch`), but it still ends with `status: "completed"`, so Solus remembers what it refused.
+- A model may retry a refused command. Each retry asks again.
+- Message chunks have no `messageId`, and titles are Markdown with the command in backticks.

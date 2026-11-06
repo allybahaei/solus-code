@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { AudioLines, ChevronLeft, History, Link2, PanelRight, Pencil, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Archive, AudioLines, ChevronLeft, History, Link2, PanelRight, Pencil, Plus, X } from "lucide-react";
 import { chatsOf, type Chat, type Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
+import { DeleteTask } from "@/components/chat/task-bar";
 import { StateDot } from "@/components/state-dot";
 import {
   DropdownMenu,
@@ -12,7 +13,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { newChat } from "@/lib/actions";
+import { archiveTask, newChat } from "@/lib/actions";
 import { activeChatId, chatTitle, displayTitle, useSolus, visibleChats } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -52,10 +53,27 @@ export function TabBar() {
       <div className="flex shrink-0 items-center gap-0.5">
         {task && <HistoryMenu task={task} />}
         <CopyLinkButton />
+        {task && <ArchiveButton task={task} />}
+        {task && <DeleteTask key={task.id} task={task} className={iconButton} />}
         {task && <AgentStack task={task} />}
         <PaneToggle />
       </div>
     </div>
+  );
+}
+
+function ArchiveButton({ task }: { task: Task }) {
+  if (task.archivedAt) return null;
+  return (
+    <button
+      type="button"
+      className={iconButton}
+      onClick={() => void archiveTask(task.id)}
+      aria-label="Archive task"
+      title="Archive: commits its work, frees the worktree, keeps the branch and chat"
+    >
+      <Archive />
+    </button>
   );
 }
 
@@ -133,9 +151,16 @@ function ChatTab({ task, chat, active, closable }: { task: Task; chat: Chat; act
   const rename = useSolus((s) => s.rename);
   const [editing, setEditing] = useState(false);
   const key = `${task.id}/${chat.id}`;
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Keep the open tab in view when there are more than fit.
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active]);
 
   return (
     <div
+      ref={ref}
       className={cn(
         "group relative flex max-w-56 min-w-24 shrink-0 items-center gap-1.5 px-3 text-sm",
         active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
@@ -196,7 +221,7 @@ function HistoryMenu({ task }: { task: Task }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={iconButton} aria-label="Closed chats" title="Closed chats">
+      <DropdownMenuTrigger className={cn(iconButton, "hidden md:grid")} aria-label="Closed chats" title="Closed chats">
         <History />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
@@ -228,7 +253,7 @@ function CopyLinkButton() {
       type="button"
       className={iconButton}
       aria-label={`Copy ${what}`}
-      title={`Copy ${what}`}
+      title={`Copy ${what}: ${value}`}
       onClick={() => {
         navigator.clipboard.writeText(value).then(
           () => setNotice(`Copied ${what}: ${value}`),
@@ -246,7 +271,7 @@ function AgentStack({ task }: { task: Task }) {
   const agents = [...new Set(chatsOf(task).map((c) => c.agent))];
   return (
     <div
-      className="mx-1.5 flex items-center -space-x-1.5"
+      className="mx-1.5 hidden items-center -space-x-1.5 md:flex"
       aria-label={`Agents: ${agents.map((a) => AGENTS[a].label).join(", ")}`}
       title={agents.map((a) => AGENTS[a].label).join(", ")}
     >

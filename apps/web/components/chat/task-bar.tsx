@@ -1,61 +1,59 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, ArrowUpRight, GitBranch, GitMerge, GitPullRequest, MessageSquare, Play, Square, Trash2 } from "lucide-react";
-import type { Task } from "@solus/core";
-import { AGENTS, AgentIcon } from "@/components/agent-picker";
+import { ArrowUpRight, GitMerge, GitPullRequest, ListChecks, MessageSquare, Play, Square, Trash2 } from "lucide-react";
+import type { Task, TaskState } from "@solus/core";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { archiveTask, deleteTask, startTask, stopTask } from "@/lib/actions";
+import { deleteTask, startTask, stopTask } from "@/lib/actions";
 import { reviewOf, useReview } from "@/lib/review-store";
-import { activeChatId, displayTitle, taskInChat, useSolus } from "@/lib/store";
+import { activeChatId, taskInChat, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-/** Title, branch, state, the Chat/Review switch, and the action that moves the task forward. */
-export function TaskHeader({ task }: { task: Task }) {
-  const { changes } = task;
-  const title = useSolus((s) => displayTitle(s, task));
+/** Soft fills, so the bar reads at a glance. Other states stay plain. */
+const TINT: Partial<Record<TaskState, string>> = {
+  needs_input: "bg-state-needs-input-soft",
+  stuck: "bg-state-stuck-soft",
+  ready_for_review: "bg-state-review/10",
+};
+
+/** The task's state and the action that moves it forward. Sits above the changes, or above the chat without them. */
+export function TaskBar({ task, showSwitch = false }: { task: Task; showSwitch?: boolean }) {
+  const label =
+    task.state === "merged"
+      ? `Merged into ${task.mergedInto ?? task.baseBranch}`
+      : task.pullRequest && task.state === "ready_for_review"
+        ? "PR opened"
+        : undefined;
   return (
-    <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
-      <div className="min-w-0 flex-[1_1_16rem]">
-        <h1 className="truncate text-sm font-medium">{title}</h1>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <StateLabel state={task.state} {...(task.pullRequest && task.state === "ready_for_review" ? { label: "PR opened" } : {})} />
-          <span className="inline-flex items-center gap-1.5">
-            <AgentIcon agent={task.agent} className="size-3.5" />
-            {AGENTS[task.agent].label}
-          </span>
-          <span className="inline-flex max-w-full min-w-0 items-center gap-1 font-mono" title={task.branch}>
-            <GitBranch className="size-3 shrink-0" />
-            <span className="truncate">{task.branch}</span>
-          </span>
-          {changes.files > 0 && (
-            <span className="font-mono tabular-nums">
-              {changes.files} {changes.files === 1 ? "file" : "files"}{" "}
-              <span className="text-diff-add">+{changes.additions}</span>{" "}
-              <span className="text-diff-del">−{changes.deletions}</span>
-            </span>
-          )}
-        </div>
+    <header className={cn("flex h-12 shrink-0 items-center gap-2 border-b px-3", TINT[task.state])}>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <StateLabel state={task.state} {...(label ? { label } : {})} />
       </div>
-      <div className="flex items-center gap-2">
-        <ViewSwitch task={task} />
+      <div className="flex shrink-0 items-center gap-2">
+        {showSwitch ? <ViewSwitch task={task} /> : task.pullRequest && <ChecksToggle task={task} />}
         <Actions task={task} />
-        {!task.archivedAt && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => void archiveTask(task.id)}
-            aria-label="Archive task"
-            title="Archive: commits its work, frees the worktree, keeps the branch and chat"
-          >
-            <Archive />
-          </Button>
-        )}
-        <DeleteTask task={task} />
       </div>
     </header>
+  );
+}
+
+/** The switch isn't here while the changes pane is, so Checks needs its own way in. */
+function ChecksToggle({ task }: { task: Task }) {
+  const checking = useReview((s) => s.view[task.id] === "checks");
+  const setView = useReview((s) => s.setView);
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-pressed={checking}
+      onClick={() => setView(task.id, checking ? "chat" : "checks")}
+      title={checking ? "Back to the chat" : "CI and review comments"}
+    >
+      <ListChecks />
+      Checks
+    </Button>
   );
 }
 
@@ -101,14 +99,14 @@ function ViewSwitch({ task }: { task: Task }) {
 }
 
 /** Deleting can't be undone, so it says what will go, in terms of this task. */
-function DeleteTask({ task }: { task: Task }) {
+export function DeleteTask({ task, className }: { task: Task; className?: string }) {
   const [open, setOpen] = useState(false);
   const landed = task.state === "merged" || !!task.pullRequest;
   return (
     <>
-      <Button size="icon-sm" variant="ghost" onClick={() => setOpen(true)} aria-label="Delete task" title="Delete task">
+      <button type="button" className={className} onClick={() => setOpen(true)} aria-label="Delete task" title="Delete task">
         <Trash2 />
-      </Button>
+      </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -193,9 +191,14 @@ function Actions({ task }: { task: Task }) {
         </>
       );
     case "merged":
-      return (
-        <span className="text-xs text-muted-foreground">Merged into {task.mergedInto ?? task.baseBranch}</span>
-      );
+      return task.pullRequest ? (
+        <Button size="sm" variant="ghost" asChild>
+          <a href={task.pullRequest.url} target="_blank" rel="noreferrer">
+            PR #{task.pullRequest.number}
+            <ArrowUpRight />
+          </a>
+        </Button>
+      ) : null;
     default:
       return null;
   }

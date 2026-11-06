@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, MessageSquare } from "lucide-react";
+import { Check, Eye, MessageSquare } from "lucide-react";
 import type { DiffFile, Task } from "@solus/core";
 import { splitPath } from "@/lib/format";
 import { reviewOf, useReview } from "@/lib/review-store";
@@ -22,6 +22,7 @@ export function Changes({ task, files }: { task: Task; files: DiffFile[] }) {
   const inView = useReview((s) => s.inView);
   const review = useReview((s) => reviewOf(s, task.id));
   const showFile = useReview((s) => s.showFile);
+  const setView = useReview((s) => s.setView);
 
   return (
     <section aria-label="Changes" className="flex min-h-0 flex-1 flex-col">
@@ -29,10 +30,26 @@ export function Changes({ task, files }: { task: Task; files: DiffFile[] }) {
         <span className="font-medium">Changes</span>
         <span className="text-muted-foreground tabular-nums">{files.length}</span>
         {files.length > 0 && (
-          <span className="ml-auto font-mono text-xs tabular-nums">
-            <span className="text-diff-add">+{task.changes.additions}</span>{" "}
-            <span className="text-diff-del">−{task.changes.deletions}</span>
-          </span>
+          <>
+            <span className="font-mono text-xs tabular-nums">
+              <span className="text-diff-add">+{task.changes.additions}</span>{" "}
+              <span className="text-diff-del">−{task.changes.deletions}</span>
+            </span>
+            <button
+              type="button"
+              aria-pressed={reviewing}
+              onClick={() => setView(task.id, reviewing ? "chat" : "review")}
+              title={reviewing ? "Back to the chat (Esc)" : "Review the diff (R)"}
+              className={cn(
+                "ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
+                reviewing ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Eye className="size-3.5" />
+              Review
+              {review.comments.length > 0 && <span className="tabular-nums">{review.comments.length}</span>}
+            </button>
+          </>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import { Composer, COMPOSER_ID } from "@/components/chat/composer";
 import { TabBar } from "@/components/chat/tab-bar";
-import { TaskHeader } from "@/components/chat/task-header";
+import { TaskBar } from "@/components/chat/task-bar";
 import { Transcript } from "@/components/chat/transcript";
 import { Home } from "@/components/home";
 import { NewTaskDialog } from "@/components/new-task-dialog";
@@ -71,6 +71,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
   const setView = useSolus((s) => s.setCenterView);
   const reviewing = useReview((s) => (task ? s.view[task.id] === "review" : false));
   const checking = useReview((s) => (task ? s.view[task.id] === "checks" : false));
+  const rightPaneOpen = useSolus((s) => s.rightPaneOpen);
 
   if (status === "error") {
     return <Empty>Couldn&apos;t reach the runner: {error}</Empty>;
@@ -84,7 +85,8 @@ function ActiveTask({ wide }: { wide: boolean }) {
   const messages = allMessages.filter((m) => (m.chatId ?? MAIN_CHAT) === chatId);
   return (
     <>
-      <TaskHeader task={task} />
+      {/* The right pane carries this bar. Without the pane it sits here, so the actions never go away. */}
+      {!(wide && rightPaneOpen) && <TaskBar task={task} showSwitch />}
       {!wide && (
         <div role="tablist" className="flex shrink-0 gap-1 border-b px-3 py-1.5">
           {(["chat", "changes", "run", "terminal"] as const).map((v) => (
@@ -130,6 +132,7 @@ function RightPane() {
     <aside className="flex w-[19rem] shrink-0 flex-col border-l xl:w-[21rem]">
       {task ? (
         <>
+          <TaskBar task={task} />
           <div className="flex min-h-0 flex-1 flex-col">
             <Changes key={task.id} task={task} files={files} />
           </div>

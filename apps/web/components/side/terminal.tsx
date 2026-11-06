@@ -2,8 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
+import type { Terminal as XTerm } from "@xterm/xterm";
 import type { Task } from "@solus/core";
 import { resizeTerminal, writeTerminal } from "@/lib/actions";
+import { useResolvedTheme } from "@/lib/hooks";
 import { useSolus } from "@/lib/store";
 
 /** Resolves any CSS colour (oklch, light-dark(), var()) to #rrggbb, which xterm needs. */
@@ -33,8 +35,14 @@ function themeFrom(el: HTMLElement) {
     red: c("var(--diff-del)"),
     brightRed: c("var(--diff-del)"),
     yellow: c("var(--state-needs-input)"),
+    brightYellow: c("var(--state-needs-input)"),
     blue: c("var(--state-working)"),
+    brightBlue: c("var(--state-working)"),
+    brightCyan: c("var(--state-working)"),
     brightBlack: c("var(--muted-foreground)"),
+    // xterm's defaults are near-white, which vanishes on the light theme.
+    white: c("var(--muted-foreground)"),
+    brightWhite: c("var(--foreground)"),
   };
 }
 
@@ -42,6 +50,13 @@ function themeFrom(el: HTMLElement) {
 export function TerminalView({ task, source = "terminal" }: { task: Task; source?: "terminal" | "run" }) {
   const interactive = source === "terminal";
   const hostRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<XTerm | null>(null);
+  const theme = useResolvedTheme();
+
+  // xterm paints with fixed colours, so it needs telling when the theme changes.
+  useEffect(() => {
+    if (termRef.current && hostRef.current) termRef.current.options.theme = themeFrom(hostRef.current);
+  }, [theme]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -67,6 +82,7 @@ export function TerminalView({ task, source = "terminal" }: { task: Task; source
       term.loadAddon(fit);
       term.open(host);
       fit.fit();
+      termRef.current = term;
 
       if (interactive) term.write(`\x1b[2mWorkspace ${task.branch}\x1b[0m\r\n`);
       let written = 0;
@@ -93,17 +109,13 @@ export function TerminalView({ task, source = "terminal" }: { task: Task; source
       const resize = new ResizeObserver(() => fit.fit());
       resize.observe(host);
 
-      const scheme = window.matchMedia("(prefers-color-scheme: dark)");
-      const retheme = () => (term.options.theme = themeFrom(host));
-      scheme.addEventListener("change", retheme);
-
       cleanup = () => {
         unsubscribe();
         input.dispose();
         sizing.dispose();
         term.textarea?.removeEventListener("focus", startShell);
         resize.disconnect();
-        scheme.removeEventListener("change", retheme);
+        termRef.current = null;
         term.dispose();
       };
     })();

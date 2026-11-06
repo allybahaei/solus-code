@@ -29,6 +29,18 @@ export interface TaskDeletedEvent extends BaseEvent {
   type: "task.deleted";
 }
 
+/** The task changed without changing state. Carries the full task. */
+export interface TaskUpdatedEvent extends BaseEvent {
+  type: "task.updated";
+  task: Task;
+}
+
+/** Output from a saved command, such as a dev server. */
+export interface RunOutputEvent extends BaseEvent {
+  type: "run.output";
+  data: string;
+}
+
 /** Carries the full task after the change, so listeners can replace their copy. */
 export interface TaskStateChangedEvent extends BaseEvent {
   type: "task.state_changed";
@@ -73,6 +85,8 @@ export interface RunnerErrorEvent {
 export type RunnerEvent =
   | TaskCreatedEvent
   | TaskDeletedEvent
+  | TaskUpdatedEvent
+  | RunOutputEvent
   | TaskStateChangedEvent
   | AgentOutputEvent
   | TerminalOutputEvent

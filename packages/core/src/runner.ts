@@ -25,6 +25,8 @@ export interface RepoInfo {
   /** Local path, for runners that have one. */
   path?: string;
   defaultBranch: string;
+  /** Names of the saved commands in solus.json. */
+  actions: string[];
 }
 
 /** One thing Solus depends on. */
@@ -56,6 +58,8 @@ export interface RunnerSnapshot {
   diffs: Record<string, DiffFile[]>;
   /** Terminal output so far per task, in order. */
   terminal: Record<string, string[]>;
+  /** Output from saved commands per task, in order. */
+  runOutput: Record<string, string[]>;
 }
 
 /**
@@ -90,6 +94,9 @@ export interface Runner {
   resolveConflicts(id: string, target: string): Promise<void>;
   /** Stops the task and removes it, with its local branch, worktree and history. */
   deleteTask(id: string): Promise<void>;
+  /** Runs a saved command in the task's worktree, replacing any already running. */
+  startAction(id: string, name: string): Promise<void>;
+  stopAction(id: string): Promise<void>;
   /** Types into the task's shell, starting it if needed. Empty data just starts it. */
   writeTerminal(id: string, data: string): Promise<void>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<void>;

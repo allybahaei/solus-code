@@ -19,6 +19,8 @@ export const RUNNER_METHODS = [
   "stopTask",
   "deleteTask",
   "resolveConflicts",
+  "startAction",
+  "stopAction",
   "writeTerminal",
   "resizeTerminal",
   "getDiff",

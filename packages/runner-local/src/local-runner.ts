@@ -22,6 +22,7 @@ import {
   type TaskError,
   type TaskState,
 } from "@solus/core";
+import { RunningAction } from "./action";
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { readDiff } from "./diff";
 import { readRepo } from "./git";
@@ -49,6 +50,8 @@ interface Rec extends StoredTask {
   files: DiffFile[];
   session?: AgentSession;
   shell?: WorkspaceShell;
+  action?: RunningAction;
+  runOutput: string[];
   /** The terminal's size, for when the shell starts. */
   size: ShellSize;
   /** Bumped to abandon a launch that is still preparing. */
@@ -61,6 +64,10 @@ interface Rec extends StoredTask {
   /** Agent events for this task, handled strictly in order. */
   queue: Promise<void>;
 }
+
+/** Each task gets a block of ports, so apps in parallel worktrees don't collide. */
+const FIRST_TASK_PORT = 41000;
+const PORTS_PER_TASK = 10;
 
 /** How much terminal history to keep per task, for reloads. */
 const TERMINAL_CHUNKS = 5000;
@@ -114,6 +121,7 @@ export class LocalRunner implements Runner {
       rec.abort?.abort();
       rec.session?.stop();
       rec.shell?.kill();
+      rec.action?.stop();
     }
     this.listeners.clear();
     this.store.unlock();
@@ -131,6 +139,7 @@ export class LocalRunner implements Runner {
       messages: byTask((r) => r.messages),
       diffs: byTask((r) => r.files),
       terminal: byTask((r) => r.terminal),
+      runOutput: byTask((r) => r.runOutput),
     };
   }
 
@@ -162,6 +171,7 @@ export class LocalRunner implements Runner {
       changes: { files: 0, additions: 0, deletions: 0 },
       createdAt: now,
       lastActivityAt: now,
+      port: this.freePort(),
     };
     this.records.set(task.id, this.newRecord({ task }));
     this.save();
@@ -247,6 +257,38 @@ export class LocalRunner implements Runner {
       this.save();
       this.emit({ type: "task.deleted", taskId: id, at: Date.now() });
     });
+  }
+
+  async startAction(id: string, name: string): Promise<void> {
+    const rec = this.get(id);
+    if (!rec.worktree || !existsSync(rec.worktree)) throw new Error("Start the task first: it has no workspace yet.");
+    const command = this.configuredActions()[name];
+    if (!command) throw new Error(`There's no saved command called ${name} in solus.json.`);
+    rec.action?.stop();
+
+    const worktree = rec.worktree;
+    this.runOut(rec, `\x1b[2m$ ${command}\x1b[0m\r\n`);
+    const action = new RunningAction(
+      command,
+      worktree,
+      this.workspaceEnv(rec),
+      (data) => this.runOut(rec, data),
+      (code, stopped) => {
+        this.runOut(rec, `\x1b[2m${stopped ? "Stopped" : `Exited with code ${code}`}\x1b[0m\r\n`);
+        // A replacement may already be running.
+        if (rec.action !== action) return;
+        delete rec.action;
+        delete rec.task.running;
+        this.updated(rec);
+      },
+    );
+    rec.action = action;
+    rec.task.running = name;
+    this.updated(rec);
+  }
+
+  async stopAction(id: string): Promise<void> {
+    this.get(id).action?.stop();
   }
 
   async writeTerminal(id: string, data: string): Promise<void> {
@@ -342,12 +384,51 @@ export class LocalRunner implements Runner {
     delete rec.session;
     rec.shell?.kill();
     delete rec.shell;
+    rec.action?.stop();
+  }
+
+  /** The lowest block of ports no task holds. */
+  private freePort(): number {
+    const taken = new Set([...this.records.values()].map((r) => r.task.port));
+    let port = FIRST_TASK_PORT;
+    while (taken.has(port)) port += PORTS_PER_TASK;
+    return port;
+  }
+
+  /** What every process in a workspace gets. */
+  private workspaceEnv(rec: Rec): NodeJS.ProcessEnv {
+    return {
+      SOLUS_PORT: String(rec.task.port ?? FIRST_TASK_PORT),
+      SOLUS_ROOT_PATH: this.repo.path,
+      ...(rec.worktree ? { SOLUS_WORKSPACE_PATH: rec.worktree } : {}),
+    };
+  }
+
+  private configuredActions(): Record<string, string> {
+    try {
+      return readRepoConfig(this.repo.path).run ?? {};
+    } catch {
+      return {};
+    }
+  }
+
+  private updated(rec: Rec) {
+    this.save();
+    this.emit({ type: "task.updated", taskId: rec.task.id, at: Date.now(), task: structuredClone(rec.task) });
+  }
+
+  /** Kept in memory only, like the shell: a dev server can print anything. */
+  private runOut(rec: Rec, data: string) {
+    rec.runOutput.push(data);
+    if (rec.runOutput.length > TERMINAL_CHUNKS) rec.runOutput.splice(0, rec.runOutput.length - TERMINAL_CHUNKS);
+    this.emit({ type: "run.output", taskId: rec.task.id, at: Date.now(), data });
   }
 
   private startShell(rec: Rec, cwd: string): WorkspaceShell {
     const shell = new WorkspaceShell(
       cwd,
       rec.size,
+      this.workspaceEnv(rec),
       // Not saved to disk: anything can pass through an interactive shell.
       (data) => this.term(rec, data, false),
       () => {
@@ -379,7 +460,12 @@ export class LocalRunner implements Runner {
   }
 
   private repoInfo(): RepoInfo {
-    return { name: this.repo.name, path: this.repo.path, defaultBranch: this.repo.defaultBranch };
+    return {
+      name: this.repo.name,
+      path: this.repo.path,
+      defaultBranch: this.repo.defaultBranch,
+      actions: Object.keys(this.configuredActions()),
+    };
   }
 
   private newRecord(stored: StoredTask): Rec {
@@ -388,6 +474,7 @@ export class LocalRunner implements Runner {
       messages: [],
       streaming: new Map(),
       terminal: [],
+      runOutput: [],
       files: [],
       size: { cols: 80, rows: 24 },
       launch: 0,
@@ -398,8 +485,12 @@ export class LocalRunner implements Runner {
   private async restore() {
     for (const stored of this.store.loadTasks()) {
       const rec = this.newRecord(stored);
+      // Registered first, so freePort below sees every task saved before it.
+      this.records.set(rec.task.id, rec);
       rec.messages = this.store.loadMessages(stored.task.id);
       rec.terminal = this.store.loadTerminal(stored.task.id);
+      delete rec.task.running;
+      rec.task.port ??= this.freePort();
       // Its agent died with the last daemon. Replying starts it again.
       if (rec.task.state === "working" || rec.task.approval) {
         rec.task.state = "stuck";
@@ -519,7 +610,7 @@ export class LocalRunner implements Runner {
       const { prompt: task } = rec.task;
       const prompt = session || message === task ? message : `${task}\n\n${message}`;
       rec.session = this.adapterFor(rec.task.agent).start(
-        { taskId: rec.task.id, cwd, prompt, ...(session ? { session } : {}) },
+        { taskId: rec.task.id, cwd, prompt, env: this.workspaceEnv(rec), ...(session ? { session } : {}) },
         (event) => {
           if (!abandoned()) rec.queue = rec.queue.then(() => this.onAgentEvent(rec, event));
         },
@@ -545,7 +636,7 @@ export class LocalRunner implements Runner {
     if (copied.length > 0) this.term(rec, `\x1b[2mCopied ${copied.join(", ")}\x1b[0m\r\n`);
     if (config.setup) {
       this.term(rec, `\x1b[2m$ ${config.setup}\x1b[0m\r\n`);
-      await runSetup(config.setup, rec.worktree, (data) => this.term(rec, data), signal);
+      await runSetup(config.setup, rec.worktree, (data) => this.term(rec, data), signal, this.workspaceEnv(rec));
     }
     rec.setupDone = true;
     this.save();

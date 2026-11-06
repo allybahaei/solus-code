@@ -30,6 +30,8 @@ export const resizeTerminal = (id: string, cols: number, rows: number) => {
   getRunner().resizeTerminal(id, cols, rows).catch(() => {});
 };
 export const resolveConflicts = (id: string, target: string) => attempt(() => getRunner().resolveConflicts(id, target));
+export const startAction = (id: string, name: string) => attempt(() => getRunner().startAction(id, name));
+export const stopAction = (id: string) => attempt(() => getRunner().stopAction(id));
 export const deleteTask = (id: string) => attempt(() => getRunner().deleteTask(id));
 export const stopTask = (id: string) => attempt(() => getRunner().stopTask(id));
 export function sendMessage(id: string, text: string, agent?: AgentKind) {

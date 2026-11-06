@@ -54,6 +54,10 @@ export interface Task {
   approval?: ApprovalRequest;
   /** Set while state is stuck: why. */
   error?: TaskError;
+  /** First of the task's block of ports, for running several apps side by side. */
+  port?: number;
+  /** The saved command running now, if any. */
+  running?: string;
   /** Set once merged through a pull request. */
   pullRequest?: PullRequestRef;
   /** Set once merged locally: the branch it was merged into. */

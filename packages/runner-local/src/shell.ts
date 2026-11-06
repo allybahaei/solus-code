@@ -39,13 +39,19 @@ export interface ShellSize {
 export class WorkspaceShell {
   private readonly pty: IPty;
 
-  constructor(cwd: string, size: ShellSize, onData: (data: string) => void, onExit: () => void) {
+  constructor(
+    cwd: string,
+    size: ShellSize,
+    env: NodeJS.ProcessEnv,
+    onData: (data: string) => void,
+    onExit: () => void,
+  ) {
     this.pty = nodePty().spawn(process.env.SHELL ?? "/bin/sh", [], {
       name: "xterm-256color",
       cwd,
       cols: size.cols,
       rows: size.rows,
-      env: process.env as Record<string, string>,
+      env: { ...process.env, ...env } as Record<string, string>,
     });
     this.pty.onData(onData);
     this.pty.onExit(onExit);

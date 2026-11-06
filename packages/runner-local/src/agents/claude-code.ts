@@ -175,7 +175,7 @@ class ClaudeSession implements AgentSession {
         "--allowedTools", ...ALLOWED_TOOLS,
         "--append-system-prompt", SYSTEM_PROMPT,
       ],
-      { cwd, env: { ...process.env, MCP_TOOL_TIMEOUT: ONE_DAY_MS }, stdio: ["pipe", "pipe", "pipe"] },
+      { cwd, env: { ...process.env, ...this.start.env, MCP_TOOL_TIMEOUT: ONE_DAY_MS }, stdio: ["pipe", "pipe", "pipe"] },
     );
     this.child = child;
     this.emit({ type: "session", id: sessionId });

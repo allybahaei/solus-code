@@ -9,6 +9,8 @@ export interface RepoConfig {
   setup?: string;
   /** Files git doesn't track that a worktree needs, such as ".env.local". */
   copy?: string[];
+  /** Saved commands for the Run tab. A plain string is one command named "run". */
+  run?: Record<string, string>;
 }
 
 export function readRepoConfig(root: string): RepoConfig {
@@ -20,10 +22,17 @@ export function readRepoConfig(root: string): RepoConfig {
   } catch (err) {
     throw new Error("solus.json isn't valid JSON.", { cause: err });
   }
-  const { setup, copy } = raw as RepoConfig;
+  const { setup, copy, run } = raw as Omit<RepoConfig, "run"> & { run?: unknown };
+  const commands =
+    typeof run === "string"
+      ? { run }
+      : run && typeof run === "object"
+        ? Object.fromEntries(Object.entries(run).filter((e): e is [string, string] => typeof e[1] === "string"))
+        : undefined;
   return {
     ...(typeof setup === "string" ? { setup } : {}),
     ...(Array.isArray(copy) ? { copy: copy.filter((c) => typeof c === "string") } : {}),
+    ...(commands ? { run: commands } : {}),
   };
 }
 
@@ -74,9 +83,10 @@ export function runSetup(
   cwd: string,
   onOutput: (data: string) => void,
   signal: AbortSignal,
+  env: NodeJS.ProcessEnv = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, { cwd, shell: true, signal, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, { cwd, shell: true, signal, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
     let tail = "";
     const out = (d: Buffer) => {
       const text = d.toString();

@@ -44,8 +44,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 An optional `solus.json` at the root of the repo being worked on prepares each new worktree:
 
 ```json
-{ "setup": "pnpm install", "copy": [".env.local"] }
+{
+  "setup": "pnpm install",
+  "copy": [".env.local"],
+  "run": { "dev": "pnpm dev --port $SOLUS_PORT", "test": "pnpm test" }
+}
 ```
+
+`run` adds commands to the Run tab, as one string or several named ones. Each task gets a block of ten ports starting at `$SOLUS_PORT`, so the same app can run from several tasks at once. Agents and terminals get it too, along with `$SOLUS_WORKSPACE_PATH` and `$SOLUS_ROOT_PATH`.
 
 ## Licence
 

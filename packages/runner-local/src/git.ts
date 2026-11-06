@@ -58,6 +58,7 @@ export async function readRepo(path: string): Promise<RepoInfo> {
     name: nameFromRemote(remote) ?? basename(root),
     path: root,
     defaultBranch: await defaultBranch(root),
+    actions: [],
   };
 }
 

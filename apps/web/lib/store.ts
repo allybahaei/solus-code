@@ -5,7 +5,7 @@ import type { AgentMessage, DiffFile, RepoInfo, Runner, RunnerSnapshot, SetupSta
 import { navOrder } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
-export type CenterView = "chat" | "changes" | "terminal";
+export type CenterView = "chat" | "changes" | "terminal" | "run";
 
 interface SolusState {
   status: "connecting" | "ready" | "error";
@@ -19,6 +19,8 @@ interface SolusState {
   diffs: Record<string, DiffFile[]>;
   /** Raw terminal chunks per task, written to xterm in order. */
   terminal: Record<string, string[]>;
+  /** Output from saved commands, per task. */
+  runOutput: Record<string, string[]>;
   /** Short-lived message for a failed action. */
   notice: string | null;
 
@@ -108,6 +110,7 @@ export const useSolus = create<SolusState>()((set, get) => ({
   messages: {},
   diffs: {},
   terminal: {},
+  runOutput: {},
   notice: null,
 
   openTabs: [],
@@ -210,6 +213,7 @@ function applySnapshot(snapshot: RunnerSnapshot) {
       messages: snapshot.messages,
       diffs: snapshot.diffs,
       terminal: snapshot.terminal,
+      runOutput: snapshot.runOutput,
       openTabs,
       activeId,
     };
@@ -247,7 +251,14 @@ export function connectRunner(runner: Runner, connection?: ConnectionSource): ()
 
   const unsubscribe = runner.subscribe((e) => {
     switch (e.type) {
+      case "run.output":
+        set((s) => ({
+          runOutput: { ...s.runOutput, [e.taskId]: [...(s.runOutput[e.taskId] ?? []), e.data] },
+        }));
+        break;
+
       case "task.created":
+      case "task.updated":
       case "task.state_changed":
         set((s) => ({ tasks: { ...s.tasks, [e.taskId]: e.task } }));
         break;

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -433,5 +433,76 @@ describe("approvals", () => {
     const r = await open();
     expect(await task(r, t.id)).toMatchObject({ state: "stuck" });
     expect((await task(r, t.id))?.approval).toBeUndefined();
+  });
+});
+
+describe("saved commands", () => {
+  const config = (run: unknown) => writeFileSync(join(repo, "solus.json"), JSON.stringify({ run }));
+  const output = async (r: LocalRunner, id: string) => (await r.snapshot()).runOutput[id]?.join("") ?? "";
+
+  async function ready(r: LocalRunner, title: string) {
+    const t = await newTask(r, title);
+    await r.startTask(t.id);
+    await reaches(r, t.id, "ready_for_review");
+    return t;
+  }
+
+  it("reads one command or several", async () => {
+    config("echo hi");
+    let r = await open();
+    expect((await r.snapshot()).repo.actions).toEqual(["run"]);
+    r.dispose();
+    config({ dev: "echo dev", test: "echo test", bad: 3 });
+    r = await open();
+    expect((await r.snapshot()).repo.actions).toEqual(["dev", "test"]);
+  });
+
+  it("gives each task its own ports and runs in its worktree", async () => {
+    config('echo "port=$SOLUS_PORT root=$SOLUS_ROOT_PATH"; pwd');
+    const r = await open();
+    const a = await ready(r, "One");
+    const b = await ready(r, "Two");
+    expect(a.port).not.toBe(b.port);
+    expect(Math.abs((a.port ?? 0) - (b.port ?? 0))).toBeGreaterThanOrEqual(10);
+
+    await r.startAction(a.id, "run");
+    await vi.waitFor(async () => expect(await output(r, a.id)).toContain(`port=${a.port}`), { timeout: 4000 });
+    await vi.waitFor(async () => expect(await output(r, a.id)).toContain("Exited with code 0"), { timeout: 4000 });
+    expect(await output(r, a.id)).toContain(join(home, "worktrees"));
+    expect((await r.listTasks()).find((t) => t.id === a.id)?.running).toBeUndefined();
+  });
+
+  it("stops the whole process tree", async () => {
+    const marker = join(dir, "still-running");
+    config(`(sleep 0.6; touch ${marker}) & wait`);
+    const r = await open();
+    const t = await ready(r, "Tree");
+    await r.startAction(t.id, "run");
+    expect((await r.listTasks())[0]?.running).toBe("run");
+    await r.stopAction(t.id);
+    await vi.waitFor(async () => expect(await output(r, t.id)).toContain("Stopped"), { timeout: 4000 });
+    await new Promise((done) => setTimeout(done, 900));
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("keeps ports stable across a restart and clears what was running", async () => {
+    config("sleep 30");
+    const first = await open();
+    const t = await ready(first, "Stable");
+    await first.startAction(t.id, "run");
+    first.dispose();
+    const again = await open();
+    const restored = (await again.listTasks())[0];
+    expect(restored?.port).toBe(t.port);
+    expect(restored?.running).toBeUndefined();
+  });
+
+  it("refuses unknown commands and tasks with no workspace", async () => {
+    config("echo hi");
+    const r = await open();
+    const idle = await newTask(r, "Idle");
+    await expect(r.startAction(idle.id, "run")).rejects.toThrow(/no workspace/);
+    const t = await ready(r, "Done");
+    await expect(r.startAction(t.id, "nope")).rejects.toThrow(/no saved command/);
   });
 });

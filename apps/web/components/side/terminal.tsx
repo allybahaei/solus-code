@@ -39,7 +39,8 @@ function themeFrom(el: HTMLElement) {
 }
 
 /** The task's terminal: agent commands, plus a real shell in its worktree once you click in. */
-export function TerminalView({ task }: { task: Task }) {
+export function TerminalView({ task, source = "terminal" }: { task: Task; source?: "terminal" | "run" }) {
+  const interactive = source === "terminal";
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,7 +57,8 @@ export function TerminalView({ task }: { task: Task }) {
         fontFamily: getComputedStyle(host).getPropertyValue("--font-geist-mono") || "monospace",
         fontSize: 13,
         lineHeight: 1.35,
-        cursorBlink: true,
+        cursorBlink: interactive,
+        disableStdin: !interactive,
         convertEol: false,
         scrollback: 5000,
         theme: themeFrom(host),
@@ -66,7 +68,7 @@ export function TerminalView({ task }: { task: Task }) {
       term.open(host);
       fit.fit();
 
-      term.write(`\x1b[2mWorkspace ${task.branch}\x1b[0m\r\n`);
+      if (interactive) term.write(`\x1b[2mWorkspace ${task.branch}\x1b[0m\r\n`);
       let written = 0;
       const flush = (chunks: string[] | undefined) => {
         if (!chunks) return;
@@ -77,15 +79,16 @@ export function TerminalView({ task }: { task: Task }) {
         }
         for (; written < chunks.length; written++) term.write(chunks[written] ?? "");
       };
-      flush(useSolus.getState().terminal[task.id]);
-      const unsubscribe = useSolus.subscribe((s) => flush(s.terminal[task.id]));
+      const chunks = (s: ReturnType<typeof useSolus.getState>) => (interactive ? s.terminal : s.runOutput)[task.id];
+      flush(chunks(useSolus.getState()));
+      const unsubscribe = useSolus.subscribe((s) => flush(chunks(s)));
 
       // Keystrokes go to the worktree's shell, which starts when the terminal gets focus.
-      const input = term.onData((data) => writeTerminal(task.id, data));
-      const startShell = () => writeTerminal(task.id, "");
+      const input = term.onData((data) => interactive && writeTerminal(task.id, data));
+      const startShell = () => interactive && writeTerminal(task.id, "");
       term.textarea?.addEventListener("focus", startShell);
-      const sizing = term.onResize(({ cols, rows }) => resizeTerminal(task.id, cols, rows));
-      resizeTerminal(task.id, term.cols, term.rows);
+      const sizing = term.onResize(({ cols, rows }) => interactive && resizeTerminal(task.id, cols, rows));
+      if (interactive) resizeTerminal(task.id, term.cols, term.rows);
 
       const resize = new ResizeObserver(() => fit.fit());
       resize.observe(host);
@@ -109,11 +112,10 @@ export function TerminalView({ task }: { task: Task }) {
       disposed = true;
       cleanup();
     };
-  }, [task.id, task.branch]);
+  }, [task.id, task.branch, interactive]);
 
   return (
     <section aria-label="Terminal" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center border-b px-3 text-sm font-medium">Terminal</div>
       <div className="min-h-0 flex-1 bg-card px-3 py-2">
         <div ref={hostRef} className="h-full w-full" />
       </div>

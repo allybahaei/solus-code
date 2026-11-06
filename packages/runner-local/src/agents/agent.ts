@@ -29,6 +29,8 @@ export interface AgentStart {
   prompt: string;
   /** The session to continue. Absent when starting fresh. */
   session?: string;
+  /** Extra environment, such as the task's port. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /** One running conversation with an agent. */

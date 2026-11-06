@@ -102,6 +102,7 @@ class CodexSession implements AgentSession {
 
     const child = spawn(this.options.command ?? "codex", this.args(prompt), {
       cwd: this.start.cwd,
+      env: { ...process.env, ...this.start.env },
       // stdin must be closed, or `codex exec` waits for it forever.
       stdio: ["ignore", "pipe", "pipe"],
     });

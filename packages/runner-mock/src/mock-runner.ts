@@ -109,11 +109,12 @@ export class MockRunner implements Runner {
     const byTask = <T>(fn: (r: TaskRecord) => T) =>
       Object.fromEntries(records.map((r) => [r.task.id, structuredClone(fn(r))]));
     return {
-      repo: { name: MOCK_REPO, defaultBranch: MOCK_BASE_BRANCH },
+      repo: { name: MOCK_REPO, defaultBranch: MOCK_BASE_BRANCH, actions: [] },
       tasks: records.map((r) => structuredClone(r.task)),
       messages: byTask((r) => r.messages),
       diffs: byTask((r) => [...r.files.values()]),
       terminal: byTask((r) => r.terminal),
+      runOutput: {},
     };
   }
 
@@ -209,6 +210,14 @@ export class MockRunner implements Runner {
     rec.scriptGen++;
     this.records.delete(id);
     this.emit({ type: "task.deleted", taskId: id, at: Date.now() });
+  }
+
+  async startAction(): Promise<void> {
+    throw new Error("The mock has no saved commands.");
+  }
+
+  async stopAction(): Promise<void> {
+    // Nothing runs.
   }
 
   async writeTerminal(): Promise<void> {

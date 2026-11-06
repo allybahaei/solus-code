@@ -9,6 +9,7 @@ import { Transcript } from "@/components/chat/transcript";
 import { Home } from "@/components/home";
 import { NewTaskDialog } from "@/components/new-task-dialog";
 import { Changes } from "@/components/side/changes";
+import { BottomPane, RunPanel } from "@/components/side/run-panel";
 import { TerminalView } from "@/components/side/terminal";
 import { SEARCH_ID, Sidebar } from "@/components/sidebar";
 import { MergeDialog } from "@/components/review/merge-dialog";
@@ -77,7 +78,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
       <TaskHeader task={task} />
       {!wide && (
         <div role="tablist" className="flex shrink-0 gap-1 border-b px-3 py-1.5">
-          {(["chat", "changes", "terminal"] as const).map((v) => (
+          {(["chat", "changes", "run", "terminal"] as const).map((v) => (
             <button
               key={v}
               type="button"
@@ -106,6 +107,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
         ))}
       {current === "changes" && <ReviewView key={task.id} task={task} files={files} narrow />}
       {current === "terminal" && <TerminalView key={task.id} task={task} />}
+      {current === "run" && <RunPanel key={task.id} task={task} />}
     </>
   );
 }
@@ -121,7 +123,7 @@ function RightPane() {
             <Changes key={task.id} task={task} files={files} />
           </div>
           <div className="flex min-h-0 flex-1 flex-col border-t">
-            <TerminalView key={task.id} task={task} />
+            <BottomPane key={task.id} task={task} />
           </div>
         </>
       ) : null}

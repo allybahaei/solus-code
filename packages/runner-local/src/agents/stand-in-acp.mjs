@@ -10,6 +10,8 @@ const options = [
   { optionId: "once", kind: "allow_once", name: "Allow once" },
   { optionId: "reject", kind: "reject_once", name: "Reject" },
 ];
+const needsAuth = process.argv.includes("--needs-auth");
+let authenticated = false;
 let bridge;
 let permissionId = 1000;
 const permissions = new Map();
@@ -80,7 +82,15 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "initialize":
       out({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true } } });
       break;
+    case "authenticate":
+      authenticated = msg.params.methodId === "cursor_login";
+      out({ id: msg.id, result: {} });
+      break;
     case "session/new":
+      if (needsAuth && !authenticated) {
+        out({ id: msg.id, error: { code: -32000, message: "Authentication required" } });
+        break;
+      }
       [bridge] = msg.params.mcpServers;
       out({ id: msg.id, result: { sessionId: "ses-1" } });
       break;

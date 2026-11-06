@@ -31,14 +31,15 @@ const log = () =>
     .filter(Boolean)
     .map((l) => JSON.parse(l) as { method?: string; prompt?: string; decision?: { optionId: string } });
 
-function run(prompt: string, extra: { session?: string; stallMs?: number; command?: string } = {}) {
+function run(prompt: string, extra: { session?: string; stallMs?: number; command?: string; args?: string[]; authMethod?: string } = {}) {
   const events: AgentEvent[] = [];
   const { command: cmd, session: resume, stallMs } = extra;
   const adapter = new AcpAdapter({
     label: "Stand-in",
     command: cmd ?? command,
-    args: ["acp"],
+    args: extra.args ?? ["acp"],
     login: "stand-in login",
+    ...(extra.authMethod ? { authMethod: extra.authMethod } : {}),
     ...(stallMs ? { stallMs } : {}),
   });
   session = adapter.start({ taskId: "t", cwd: dir, prompt, ...(resume ? { session: resume } : {}) }, (e) => events.push(e));
@@ -56,6 +57,18 @@ describe("AcpAdapter", () => {
     expect(text(events)).toBe("Hello");
     expect(events.filter((e) => e.type === "text").at(-1)).toMatchObject({ done: true });
     expect(log().find((l) => l.prompt)?.prompt).toContain("running inside Solus");
+  });
+
+  it("authenticates first for an agent that requires it", async () => {
+    const { until } = run("Do it", { args: ["acp", "--needs-auth"], authMethod: "cursor_login" });
+    await until("turn_end");
+    expect(log().map((l) => l.method).slice(0, 3)).toEqual(["initialize", "authenticate", "session/new"]);
+  });
+
+  it("explains a refused session", async () => {
+    const { events, until } = run("Do it", { args: ["acp", "--needs-auth"] });
+    await until("error");
+    expect(events.at(-1)).toMatchObject({ error: { detail: expect.stringContaining("stand-in login") } });
   });
 
   it("takes follow-ups in the same session", async () => {

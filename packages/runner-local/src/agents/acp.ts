@@ -14,6 +14,8 @@ export interface AcpOptions {
   env?: NodeJS.ProcessEnv;
   /** What to run when the agent isn't signed in. */
   login: string;
+  /** Sent to `authenticate` before a session, for agents that require it. */
+  authMethod?: string;
   /** A turn with no output for this long counts as stuck. */
   stallMs?: number;
 }
@@ -159,6 +161,7 @@ class AcpSession implements AgentSession {
     const { cwd, session, prompt } = this.start;
     try {
       await this.call("initialize", { protocolVersion: 1, clientCapabilities: {} });
+      if (this.options.authMethod) await this.call("authenticate", { methodId: this.options.authMethod });
       if (session) {
         this.replaying = true;
         try {
@@ -340,7 +343,7 @@ class RpcError extends Error {}
 
 /** Cursor asks through the protocol itself, so Solus's approvals work as they are. */
 export function cursorAdapter(command: string): AcpAdapter {
-  return new AcpAdapter({ label: "Cursor", command, args: ["acp"], login: `${command} login` });
+  return new AcpAdapter({ label: "Cursor", command, args: ["acp"], login: `${command} login`, authMethod: "cursor_login" });
 }
 
 /**

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AudioLines, ChevronLeft, History, Link2, PanelRight, Pencil, Plus, X } from "lucide-react";
 import type { AgentKind, Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
+import { DeleteTask } from "@/components/chat/task-bar";
 import { StateDot } from "@/components/state-dot";
 import {
   DropdownMenu,
@@ -26,6 +27,7 @@ export function TabBar() {
   const setShowList = useSolus((s) => s.setShowList);
   const setNewTaskOpen = useSolus((s) => s.setNewTaskOpen);
   const anyWorking = Object.values(tasks).some((t) => t.state === "working");
+  const active = useSolus((s) => (s.activeId ? s.tasks[s.activeId] : undefined));
 
   return (
     <div className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2">
@@ -70,6 +72,7 @@ export function TabBar() {
       <div className="flex shrink-0 items-center gap-0.5">
         <HistoryMenu />
         <CopyLinkButton />
+        {active && <DeleteTask key={active.id} task={active} className={iconButton} />}
         <AgentStack />
         <PaneToggle />
       </div>
@@ -84,9 +87,16 @@ function Tab({ task }: { task: Task }) {
   const closeTab = useSolus((s) => s.closeTab);
   const rename = useSolus((s) => s.rename);
   const [editing, setEditing] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // The tab is the only place the title shows, so keep the open one in view.
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active]);
 
   return (
     <div
+      ref={ref}
       className={cn(
         "group relative flex max-w-56 min-w-28 shrink items-center gap-1.5 px-3 text-sm",
         active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
@@ -163,7 +173,7 @@ function HistoryMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={iconButton} aria-label="Recently closed tabs" title="Recently closed">
+      <DropdownMenuTrigger className={cn(iconButton, "hidden md:grid")} aria-label="Recently closed tabs" title="Recently closed">
         <History />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
@@ -195,7 +205,7 @@ function CopyLinkButton() {
       type="button"
       className={iconButton}
       aria-label={`Copy ${what}`}
-      title={`Copy ${what}`}
+      title={`Copy ${what}: ${value}`}
       onClick={() => {
         navigator.clipboard.writeText(value).then(
           () => setNotice(`Copied ${what}: ${value}`),
@@ -218,7 +228,7 @@ function AgentStack() {
   if (agents.length === 0) return null;
   return (
     <div
-      className="mx-1.5 flex items-center -space-x-1.5"
+      className="mx-1.5 hidden items-center -space-x-1.5 md:flex"
       aria-label={`Agents: ${agents.map((a) => AGENTS[a].label).join(", ")}`}
       title={agents.map((a) => AGENTS[a].label).join(", ")}
     >

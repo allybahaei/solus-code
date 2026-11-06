@@ -1,49 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, GitBranch, GitMerge, GitPullRequest, MessageSquare, Play, Square, Trash2 } from "lucide-react";
-import type { Task } from "@solus/core";
-import { AGENTS, AgentIcon } from "@/components/agent-picker";
+import { ArrowUpRight, GitMerge, GitPullRequest, MessageSquare, Play, Square, Trash2 } from "lucide-react";
+import type { Task, TaskState } from "@solus/core";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { deleteTask, startTask, stopTask } from "@/lib/actions";
 import { reviewOf, useReview } from "@/lib/review-store";
-import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-/** Title, branch, state, the Chat/Review switch, and the action that moves the task forward. */
-export function TaskHeader({ task }: { task: Task }) {
-  const { changes } = task;
-  const title = useSolus((s) => displayTitle(s, task));
+/** Soft fills, so the bar reads at a glance. Other states stay plain. */
+const TINT: Partial<Record<TaskState, string>> = {
+  needs_input: "bg-state-needs-input-soft",
+  stuck: "bg-state-stuck-soft",
+  ready_for_review: "bg-state-review/10",
+};
+
+/** The task's state and the action that moves it forward. Sits above the changes, or above the chat without them. */
+export function TaskBar({ task, showSwitch = false }: { task: Task; showSwitch?: boolean }) {
+  // The merged state also covers an opened PR, which may not be merged yet.
+  const label = task.pullRequest
+    ? "PR opened"
+    : task.state === "merged"
+      ? `Merged into ${task.mergedInto ?? task.baseBranch}`
+      : undefined;
   return (
-    <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
-      <div className="min-w-0 flex-[1_1_16rem]">
-        <h1 className="truncate text-sm font-medium">{title}</h1>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {/* The merged state also covers an opened PR, which may not be merged yet. */}
-          <StateLabel state={task.state} {...(task.pullRequest ? { label: "PR opened" } : {})} />
-          <span className="inline-flex items-center gap-1.5">
-            <AgentIcon agent={task.agent} className="size-3.5" />
-            {AGENTS[task.agent].label}
-          </span>
-          <span className="inline-flex max-w-full min-w-0 items-center gap-1 font-mono" title={task.branch}>
-            <GitBranch className="size-3 shrink-0" />
-            <span className="truncate">{task.branch}</span>
-          </span>
-          {changes.files > 0 && (
-            <span className="font-mono tabular-nums">
-              {changes.files} {changes.files === 1 ? "file" : "files"}{" "}
-              <span className="text-diff-add">+{changes.additions}</span>{" "}
-              <span className="text-diff-del">−{changes.deletions}</span>
-            </span>
-          )}
-        </div>
+    <header className={cn("flex h-12 shrink-0 items-center gap-2 border-b px-3", TINT[task.state])}>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <StateLabel state={task.state} {...(label ? { label } : {})} />
       </div>
-      <div className="flex items-center gap-2">
-        <ViewSwitch task={task} />
+      <div className="flex shrink-0 items-center gap-2">
+        {showSwitch && <ViewSwitch task={task} />}
         <Actions task={task} />
-        <DeleteTask task={task} />
       </div>
     </header>
   );
@@ -90,14 +79,14 @@ function ViewSwitch({ task }: { task: Task }) {
 }
 
 /** Deleting can't be undone, so it says what will go, in terms of this task. */
-function DeleteTask({ task }: { task: Task }) {
+export function DeleteTask({ task, className }: { task: Task; className?: string }) {
   const [open, setOpen] = useState(false);
   const landed = task.state === "merged";
   return (
     <>
-      <Button size="icon-sm" variant="ghost" onClick={() => setOpen(true)} aria-label="Delete task" title="Delete task">
+      <button type="button" className={className} onClick={() => setOpen(true)} aria-label="Delete task" title="Delete task">
         <Trash2 />
-      </Button>
+      </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -171,9 +160,7 @@ function Actions({ task }: { task: Task }) {
             <ArrowUpRight />
           </a>
         </Button>
-      ) : (
-        <span className="text-xs text-muted-foreground">Merged into {task.mergedInto ?? task.baseBranch}</span>
-      );
+      ) : null;
     default:
       return null;
   }

@@ -8,6 +8,7 @@ import type { DiffFile } from "@solus/core";
 import { CommentForm } from "@/components/review/comment-form";
 import { Button } from "@/components/ui/button";
 import { splitPath } from "@/lib/format";
+import { useResolvedTheme } from "@/lib/hooks";
 import { reviewOf, useReview, type DiffSide, type ReviewComment } from "@/lib/review-store";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,7 @@ export const FileDiff = memo(function FileDiff({
   const toggleViewed = useReview((s) => s.toggleViewed);
   const addComment = useReview((s) => s.addComment);
   const [open, setOpen] = useState(!viewed);
+  const theme = useResolvedTheme();
   const comments = useMemo(() => allComments.filter((c) => c.path === file.path), [allComments, file.path]);
   const [dir, name] = splitPath(file.path);
   const status = STATUS[file.status];
@@ -102,7 +104,7 @@ export const FileDiff = memo(function FileDiff({
               hunks: [file.patch],
             }}
             diffViewMode={mode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
-            diffViewTheme="dark"
+            diffViewTheme={theme}
             diffViewHighlight
             diffViewFontSize={13}
             diffViewAddWidget={canComment}

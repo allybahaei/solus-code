@@ -47,10 +47,10 @@ One three-pane app shell. There is no separate board screen: the sidebar is the 
 
 ```
 ┌──────────────┬────────────────────────────────┬───────────────────┐
-│ Workspaces   │ [tab][tab][tab]  +             │ Changes  12       │
-│              │ Title · branch · state  action │  file  +12 −3     │
-│ Needs you    │                                │  file  +40        │
-│ ● task       │  chat transcript               │                   │
+│ Workspaces   │ [tab][tab][tab]  +             │ State      action │
+│              │                                │ Changes  12       │
+│ Needs you    │                                │  file  +12 −3     │
+│ ● task       │  chat transcript               │  file  +40        │
 │ ● task       │  (agent output, tool calls,    ├───────────────────┤
 │ Active       │   user messages)               │ Terminal          │
 │ ◌ task       │                                │  $ pnpm test      │
@@ -60,10 +60,10 @@ One three-pane app shell. There is no separate board screen: the sidebar is the 
 ```
 
 1. **Sidebar: workspaces** — every task for the repo, attention states first ("Needs you"), then active, then merged (collapsed). Each row: state, title, last activity; attention rows show a tint. New task is one keystroke away.
-2. **Center: chat** — tabs across the top for open workspaces. Below them a header (title, branch, state, the next action), the agent conversation with tool calls collapsed, and a composer to reply, nudge or request changes.
-3. **Right: changes and terminal** — files changed (+/−) on top, the workspace's terminal below.
+2. **Center: chat** — tabs across the top for open workspaces, then the agent conversation with tool calls collapsed, and a composer to reply, nudge or request changes.
+3. **Right: state, changes and terminal** — a bar with the task's state and next action on top, then files changed (+/−), then the workspace's terminal. When this pane is hidden or the screen is narrow, the bar sits above the chat instead.
 4. **Review** — the diff for one task, opened from the changes list: file list + side-by-side or unified diff, inline comments, "Request changes" (sends comments back to the agent → `working`) and "Merge" / "Open PR".
-5. **Merge / PR** — confirm target branch, commit message / PR title and body (pre-filled from the task), then do it. A modal off the header or Review.
+5. **Merge / PR** — confirm target branch, commit message / PR title and body (pre-filled from the task), then do it. A modal off the task bar or Review.
 
 On narrow screens the sidebar becomes the first screen, and a task shows Chat / Changes / Terminal as tabs.
 

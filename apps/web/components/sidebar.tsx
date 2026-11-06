@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowRight, House, Pin, PinOff, Plus, Search, X } from "lucide-react";
+import { ArrowRight, House, Monitor, Moon, Pin, PinOff, Plus, Search, Sun, X } from "lucide-react";
 import { STATE_LABELS, isAttention, type Task, type TaskState } from "@solus/core";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { sidebarSections } from "@/lib/groups";
 import { ago } from "@/lib/format";
-import { useNow } from "@/lib/hooks";
+import { useNow, useTheme } from "@/lib/hooks";
 import { displayTitle, useSolus } from "@/lib/store";
+import { setTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 /** The left edge bar carries the state; only attention states are loud. */
@@ -111,7 +120,8 @@ function TopNav() {
         >
           S
         </span>
-        <span className="text-[0.9375rem] font-semibold tracking-tight">Solus</span>
+        <span className="flex-1 text-[0.9375rem] font-semibold tracking-tight">Solus</span>
+        <ThemeMenu />
       </div>
 
       <NavItem icon={<House />} label="Home" onClick={goHome} />
@@ -139,6 +149,39 @@ function TopNav() {
         </div>
       )}
     </div>
+  );
+}
+
+const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
+  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+];
+
+function ThemeMenu() {
+  const theme = useTheme();
+  const current = THEMES.find((t) => t.value === theme) ?? THEMES[0]!;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Theme: ${current.label}`}
+        title="Theme"
+        className="-mr-1 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <current.icon className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
+        <DropdownMenuLabel>Theme</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as Theme)}>
+          {THEMES.map(({ value, label, icon: Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

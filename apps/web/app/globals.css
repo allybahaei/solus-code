@@ -118,8 +118,8 @@
 }
 
 /*
- * Review diffs (@git-diff-view): map its dark palette onto our tokens so
- * diffs sit in the warm theme instead of the library's blue-black.
+ * Review diffs (@git-diff-view): map its light and dark palettes onto our
+ * tokens so diffs sit in the warm theme instead of the library's own colours.
  * The extra .solus-diff class outranks the library's own selectors, which
  * load after ours.
  */

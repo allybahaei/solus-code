@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { currentTheme, subscribeTheme, type Theme } from "@/lib/theme";
 
 /** Current time, re-rendering every `intervalMs`. Null on the server. */
 const nowListeners = new Set<() => void>();
@@ -43,4 +44,17 @@ export function useMediaQuery(query: string): boolean {
     () => window.matchMedia(query).matches,
     () => false,
   );
+}
+
+/** The theme the user picked, which may be "system". */
+export function useTheme(): Theme {
+  return useSyncExternalStore(subscribeTheme, currentTheme, () => "system");
+}
+
+/** The theme on screen right now, with "system" resolved through the OS setting. */
+export function useResolvedTheme(): "light" | "dark" {
+  const theme = useTheme();
+  const osDark = useMediaQuery("(prefers-color-scheme: dark)");
+  if (theme !== "system") return theme;
+  return osDark ? "dark" : "light";
 }

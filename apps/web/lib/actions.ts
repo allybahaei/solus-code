@@ -32,6 +32,8 @@ export const resizeTerminal = (id: string, cols: number, rows: number) => {
 export const resolveConflicts = (id: string, target: string) => attempt(() => getRunner().resolveConflicts(id, target));
 export const startAction = (id: string, name: string) => attempt(() => getRunner().startAction(id, name));
 export const stopAction = (id: string) => attempt(() => getRunner().stopAction(id));
+export const archiveTask = (id: string) => attempt(() => getRunner().archiveTask(id));
+export const restoreTask = (id: string) => attempt(() => getRunner().restoreTask(id));
 export const deleteTask = (id: string) => attempt(() => getRunner().deleteTask(id));
 export const stopTask = (id: string) => attempt(() => getRunner().stopTask(id));
 export function sendMessage(id: string, text: string, agent?: AgentKind) {

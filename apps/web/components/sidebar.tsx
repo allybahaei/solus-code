@@ -30,7 +30,7 @@ export function Sidebar() {
   const showMerged = useSolus((s) => s.showMerged);
   const activeId = useSolus((s) => s.activeId);
   const toggleMerged = useSolus((s) => s.toggleMerged);
-  const { pinned: pinnedTasks, workspaces, merged } = sidebarSections(Object.values(tasks), pinned, query ?? "");
+  const { pinned: pinnedTasks, workspaces, merged, archived } = sidebarSections(Object.values(tasks), pinned, query ?? "");
   const empty = Object.keys(tasks).length === 0;
 
   return (
@@ -70,7 +70,15 @@ export function Sidebar() {
           </Section>
         )}
 
-        {merged.length > 0 && !query && (
+        {archived.length > 0 && (showMerged || query) && (
+          <Section label="Archived">
+            {archived.map((t) => (
+              <WorkspaceRow key={t.id} task={t} />
+            ))}
+          </Section>
+        )}
+
+        {merged.length + archived.length > 0 && !query && (
           <button
             type="button"
             onClick={toggleMerged}
@@ -79,7 +87,7 @@ export function Sidebar() {
             {showMerged ? "Show less" : "View all"}
             {!showMerged && (
               <>
-                <span className="tabular-nums">· {merged.length} merged</span>
+                <span className="tabular-nums">· {merged.length + archived.length} finished</span>
                 <ArrowRight className="size-3.5" />
               </>
             )}

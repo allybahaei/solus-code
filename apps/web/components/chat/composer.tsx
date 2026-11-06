@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUp, CircleAlert, MessageCircleQuestion, Play, ShieldQuestion } from "lucide-react";
+import { ArchiveRestore, ArrowUp, CircleAlert, MessageCircleQuestion, Play, ShieldQuestion } from "lucide-react";
 import type { AgentKind, Task } from "@solus/core";
 import { AgentPicker } from "@/components/agent-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { answerApproval, sendMessage, startTask } from "@/lib/actions";
+import { answerApproval, restoreTask, sendMessage, startTask } from "@/lib/actions";
 import { useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,20 @@ export function Composer({ task }: { task: Task }) {
     setText("");
     void sendMessage(task.id, message, agent);
   };
+
+  if (task.archivedAt) {
+    return (
+      <div className="shrink-0 px-4 pb-4">
+        <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3">
+          <span className="text-sm text-muted-foreground">This task is archived. Its branch and chat are kept.</span>
+          <Button size="sm" onClick={() => restoreTask(task.id)}>
+            <ArchiveRestore />
+            Restore
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="shrink-0 px-4 pb-4">

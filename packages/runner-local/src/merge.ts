@@ -129,6 +129,18 @@ export async function mergeBranch({ root, worktree, branch, target, message, str
   return commit;
 }
 
+/** Removes just the worktree, keeping the branch. */
+export async function removeWorktree(root: string, worktree: string) {
+  await git(root, ["worktree", "remove", "--force", worktree]);
+  rmSync(worktree, { recursive: true, force: true });
+}
+
+/** Checks an existing branch out into a new worktree. */
+export async function addWorktree(root: string, worktree: string, branch: string) {
+  await git(root, ["worktree", "prune"]);
+  await git(root, ["worktree", "add", worktree, branch]);
+}
+
 /** Removes a task's worktree and branch, if they still exist. Throws if git refuses. */
 export async function removeWorkspace(root: string, worktree: string | undefined, branch: string) {
   if (worktree && existsSync(worktree)) {

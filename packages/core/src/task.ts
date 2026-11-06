@@ -54,6 +54,8 @@ export interface Task {
   approval?: ApprovalRequest;
   /** Set while state is stuck: why. */
   error?: TaskError;
+  /** Set while archived: out of the way, with its branch and history kept. */
+  archivedAt?: Timestamp;
   /** First of the task's block of ports, for running several apps side by side. */
   port?: number;
   /** The saved command running now, if any. */

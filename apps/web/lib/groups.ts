@@ -5,6 +5,7 @@ export interface SidebarSections {
   /** Everything not pinned and not merged: attention states first. */
   workspaces: Task[];
   merged: Task[];
+  archived: Task[];
 }
 
 export function sidebarSections(tasks: Iterable<Task>, pinned: readonly string[], query = ""): SidebarSections {
@@ -12,11 +13,13 @@ export function sidebarSections(tasks: Iterable<Task>, pinned: readonly string[]
   const all = [...tasks]
     .filter((t) => !q || t.title.toLowerCase().includes(q) || t.branch.toLowerCase().includes(q))
     .sort(compareTasks);
+  const live = all.filter((t) => !t.archivedAt);
   const isPinned = (t: Task) => pinned.includes(t.id);
   return {
-    pinned: all.filter(isPinned),
-    workspaces: all.filter((t) => !isPinned(t) && t.state !== "merged"),
-    merged: all.filter((t) => !isPinned(t) && t.state === "merged"),
+    pinned: live.filter(isPinned),
+    workspaces: live.filter((t) => !isPinned(t) && t.state !== "merged"),
+    merged: live.filter((t) => !isPinned(t) && t.state === "merged"),
+    archived: all.filter((t) => t.archivedAt),
   };
 }
 

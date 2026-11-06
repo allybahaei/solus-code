@@ -506,3 +506,82 @@ describe("saved commands", () => {
     await expect(r.startAction(t.id, "nope")).rejects.toThrow(/no saved command/);
   });
 });
+
+describe("archiving", () => {
+  async function ready(r: LocalRunner, title: string) {
+    const t = await newTask(r, title);
+    await r.startTask(t.id);
+    await reaches(r, t.id, "ready_for_review");
+    return t;
+  }
+  const worktrees = () => sh(repo, "worktree", "list").trim().split("\n").length;
+
+  it("frees the worktree but keeps the work, branch and history", async () => {
+    const r = await open();
+    const t = await ready(r, "Keep it");
+    const before = (await r.getDiff(t.id)).files.length;
+    await r.archiveTask(t.id);
+
+    expect(worktrees()).toBe(1);
+    expect(sh(repo, "log", "--format=%s", "-1", t.branch).trim()).toBe("Work in progress: Keep it");
+    const snap = await r.snapshot();
+    expect(snap.tasks[0]?.archivedAt).toBeGreaterThan(0);
+    expect(snap.messages[t.id]?.length).toBeGreaterThan(0);
+    expect((await r.getDiff(t.id)).files).toHaveLength(before);
+    expect((await r.snapshot()).tasks[0]?.state).toBe("ready_for_review");
+  });
+
+  it("restores the worktree with the work in it, and the task carries on", async () => {
+    const r = await open();
+    const t = await ready(r, "Back again");
+    await r.archiveTask(t.id);
+    await r.restoreTask(t.id);
+
+    expect(worktrees()).toBe(2);
+    expect((await r.listTasks())[0]?.archivedAt).toBeUndefined();
+    expect((await r.getDiff(t.id)).files.map((f) => f.path)).toContain("notes/back-again.md");
+    await r.sendMessage(t.id, "One more thing");
+    await reaches(r, t.id, "ready_for_review");
+    expect((await r.getDiff(t.id)).files.map((f) => f.path)).toContain("notes/one-more-thing.md");
+  });
+
+  it("survives a restart either side", async () => {
+    const first = await open();
+    const t = await ready(first, "Across restarts");
+    const before = (await first.getDiff(t.id)).files.length;
+    await first.archiveTask(t.id);
+    first.dispose();
+
+    const r = await open();
+    expect((await r.listTasks())[0]?.archivedAt).toBeGreaterThan(0);
+    expect((await r.getDiff(t.id)).files).toHaveLength(before);
+    await r.restoreTask(t.id);
+    expect(worktrees()).toBe(2);
+  });
+
+  it("stops a running task, and refuses work until restored", async () => {
+    runner = await LocalRunner.open({ repoPath: repo, home, adapterFor: () => new FakeAgent(40) });
+    const t = await newTask(runner, "Busy");
+    await runner.startTask(t.id);
+    await runner.archiveTask(t.id);
+    expect((await runner.listTasks())[0]).toMatchObject({ state: "stuck" });
+    await expect(runner.sendMessage(t.id, "Hello")).rejects.toThrow(/Restore it first/);
+    await expect(runner.merge(t.id, { targetBranch: "main", commitMessage: "x", strategy: "squash" })).rejects.toThrow(/Restore it first/);
+  });
+
+  it("archives an idle task, and one already merged with its branch gone", async () => {
+    const r = await open();
+    const idle = await newTask(r, "Idle");
+    await r.archiveTask(idle.id);
+    await r.restoreTask(idle.id);
+    expect((await r.listTasks())[0]?.state).toBe("idle");
+
+    const t = await ready(r, "Landed");
+    await r.merge(t.id, { targetBranch: "main", commitMessage: "Landed", strategy: "squash", deleteBranch: true });
+    await r.archiveTask(t.id);
+    await r.restoreTask(t.id);
+    const task = (await r.listTasks()).find((x) => x.id === t.id);
+    expect(task).toMatchObject({ state: "merged" });
+    expect((await r.getDiff(t.id)).files.length).toBeGreaterThan(0);
+  });
+});

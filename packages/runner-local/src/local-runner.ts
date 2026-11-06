@@ -25,8 +25,16 @@ import {
 import { RunningAction } from "./action";
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { readDiff } from "./diff";
-import { readRepo } from "./git";
-import { commitAll, createPullRequest, mergeBranch, removeWorkspace, startMerge } from "./merge";
+import { branchExists, readRepo } from "./git";
+import {
+  addWorktree,
+  commitAll,
+  createPullRequest,
+  mergeBranch,
+  removeWorkspace,
+  removeWorktree,
+  startMerge,
+} from "./merge";
 import { checkSetup, type SetupCommands } from "./setup";
 import { WorkspaceShell, type ShellSize } from "./shell";
 import { TaskStore, type StoredTask } from "./store";
@@ -85,6 +93,8 @@ export class LocalRunner implements Runner {
   private readonly records = new Map<string, Rec>();
   private readonly listeners = new Set<(event: RunnerEvent) => void>();
   private nextMessage = 1;
+  /** Worktrees are created one at a time, since they all write to the same .git. */
+  private creating: Promise<unknown> = Promise.resolve();
   /** Merges run one at a time, since they move shared branches. */
   private merges: Promise<unknown> = Promise.resolve();
 
@@ -181,6 +191,7 @@ export class LocalRunner implements Runner {
 
   async startTask(id: string): Promise<void> {
     const rec = this.get(id);
+    this.requireActive(rec);
     if (rec.task.state !== "idle") throw new Error(`Task ${id} is already started (${rec.task.state}).`);
     this.addMessage(rec, "user", rec.task.prompt);
     this.setState(rec, "working");
@@ -189,6 +200,7 @@ export class LocalRunner implements Runner {
 
   async sendMessage(id: string, message: string, opts: { agent?: AgentKind } = {}): Promise<void> {
     const rec = this.get(id);
+    this.requireActive(rec);
     const { state } = rec.task;
     if (state === "idle") throw new Error(`Start task ${id} before messaging it.`);
     if (state === "merged") throw new Error(`Task ${id} is merged.`);
@@ -240,6 +252,44 @@ export class LocalRunner implements Runner {
         `Solus has started merging ${target} into this branch. These files have conflict markers: ${conflicts.join(", ")}. ` +
           "Edit them to keep the right result from both sides and remove the markers. Don't run git commands; Solus finishes the merge.",
       );
+    });
+  }
+
+  archiveTask(id: string): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      if (rec.task.archivedAt) return;
+      rec.abort?.abort();
+      this.endSession(rec);
+      await rec.launching;
+      if (rec.task.state === "working") this.setState(rec, "stuck", { error: { message: "Stopped when archived" } });
+
+      if (rec.worktree && existsSync(rec.worktree)) {
+        // Work lives on the branch from here, so nothing goes with the worktree.
+        await commitAll(rec.worktree, `Work in progress: ${rec.task.title}`, this.copiedFiles());
+        await removeWorktree(this.repo.path, rec.worktree);
+      }
+      this.store.saveDiff(rec.task.id, rec.files);
+      delete rec.worktree;
+      delete rec.setupDone;
+      rec.task.archivedAt = Date.now();
+      this.updated(rec);
+    });
+  }
+
+  restoreTask(id: string): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      if (!rec.task.archivedAt) return;
+      if (await branchExists(this.repo.path, rec.task.branch)) {
+        // The same path, because agents tie their sessions to the folder.
+        const path = join(this.worktrees, rec.task.id);
+        await addWorktree(this.repo.path, path, rec.task.branch);
+        rec.worktree = path;
+      }
+      delete rec.task.archivedAt;
+      await this.refreshDiff(rec);
+      this.updated(rec);
     });
   }
 
@@ -370,7 +420,12 @@ export class LocalRunner implements Runner {
     return run;
   }
 
+  private requireActive(rec: Rec) {
+    if (rec.task.archivedAt) throw new Error("This task is archived. Restore it first.");
+  }
+
   private readyWorktree(rec: Rec, action: string): string {
+    this.requireActive(rec);
     if (rec.task.state !== "ready_for_review") {
       throw new Error(`Can't ${action} a task while it is ${rec.task.state}.`);
     }
@@ -506,7 +561,7 @@ export class LocalRunner implements Runner {
           // The saved numbers stand. The next refresh will try again.
         }
       }
-      if (rec.task.state === "merged") rec.files = this.store.loadDiff(rec.task.id);
+      if (rec.task.state === "merged" || rec.task.archivedAt) rec.files = this.store.loadDiff(rec.task.id);
       this.records.set(rec.task.id, rec);
     }
     this.save();
@@ -626,7 +681,10 @@ export class LocalRunner implements Runner {
     if (!rec.worktree) {
       const path = join(this.worktrees, task.id);
       this.term(rec, `\x1b[2mCreating worktree for ${task.branch}…\x1b[0m\r\n`);
-      await createWorktree(this.repo.path, path, task.branch, task.baseBranch);
+      const create = () => createWorktree(this.repo.path, path, task.branch, task.baseBranch);
+      const created = this.creating.then(create, create);
+      this.creating = created.catch(() => {});
+      await created;
       rec.worktree = path;
       this.save();
     }

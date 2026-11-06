@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, GitBranch, GitMerge, GitPullRequest, MessageSquare, Play, Square, Trash2 } from "lucide-react";
+import { Archive, ArrowUpRight, GitBranch, GitMerge, GitPullRequest, MessageSquare, Play, Square, Trash2 } from "lucide-react";
 import type { Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { deleteTask, startTask, stopTask } from "@/lib/actions";
+import { archiveTask, deleteTask, startTask, stopTask } from "@/lib/actions";
 import { reviewOf, useReview } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,17 @@ export function TaskHeader({ task }: { task: Task }) {
       <div className="flex items-center gap-2">
         <ViewSwitch task={task} />
         <Actions task={task} />
+        {!task.archivedAt && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => void archiveTask(task.id)}
+            aria-label="Archive task"
+            title="Archive: commits its work, frees the worktree, keeps the branch and chat"
+          >
+            <Archive />
+          </Button>
+        )}
         <DeleteTask task={task} />
       </div>
     </header>
@@ -130,6 +141,7 @@ function DeleteTask({ task }: { task: Task }) {
 
 function Actions({ task }: { task: Task }) {
   const openMerge = useReview((s) => s.openMerge);
+  if (task.archivedAt) return null;
   switch (task.state) {
     case "idle":
       return (

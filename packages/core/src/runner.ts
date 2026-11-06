@@ -92,6 +92,10 @@ export interface Runner {
   stopTask(id: string): Promise<void>;
   /** Merges `target` into the task's branch and has the agent resolve what conflicts. */
   resolveConflicts(id: string, target: string): Promise<void>;
+  /** Stops the task, commits its work, and frees its worktree. Keeps the branch and history. */
+  archiveTask(id: string): Promise<void>;
+  /** Brings an archived task back, with its worktree. */
+  restoreTask(id: string): Promise<void>;
   /** Stops the task and removes it, with its local branch, worktree and history. */
   deleteTask(id: string): Promise<void>;
   /** Runs a saved command in the task's worktree, replacing any already running. */

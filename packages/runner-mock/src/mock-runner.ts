@@ -205,6 +205,19 @@ export class MockRunner implements Runner {
     await this.sendMessage(id, `Merge ${target} into this branch and resolve the conflicts.`);
   }
 
+  async archiveTask(id: string): Promise<void> {
+    const rec = this.get(id);
+    rec.scriptGen++;
+    rec.task.archivedAt = Date.now();
+    this.emit({ type: "task.updated", taskId: id, at: Date.now(), task: structuredClone(rec.task) });
+  }
+
+  async restoreTask(id: string): Promise<void> {
+    const rec = this.get(id);
+    delete rec.task.archivedAt;
+    this.emit({ type: "task.updated", taskId: id, at: Date.now(), task: structuredClone(rec.task) });
+  }
+
   async deleteTask(id: string): Promise<void> {
     const rec = this.get(id);
     rec.scriptGen++;

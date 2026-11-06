@@ -4,7 +4,9 @@ App name: **Solus**.
 
 ## What we're building
 
-A web app for running several coding agents (Claude Code first) in parallel on one repo. Each task gets its own isolated workspace (git worktree + branch), and the user supervises, reviews and merges from one calm, fast UI.
+A web app for running several coding agents (Claude Code and Codex in the MVP) in parallel on one repo. Each task gets its own isolated workspace (git worktree + branch), and the user supervises, reviews and merges from one calm, fast UI.
+
+**Bring your own subscription.** Solus never calls a model itself. It runs the official `claude` and `codex` tools on the user's machine, on the login they already have, so usage counts against their own plan or API key. Solus has no model billing and no account in the middle. Never read, copy or proxy their login tokens. Warn when an environment variable such as `ANTHROPIC_API_KEY` would switch someone from their subscription to API billing. Check each provider's terms before running a subscription login on a remote sandbox.
 
 The bar for UX is Conductor (conductor.build), which is winding down. We match the *feel* of its core loop, not its look. We do not copy its visual design, copy, or branding.
 
@@ -121,7 +123,7 @@ interface Runner {
 ## Build order
 
 1. **Prototype with mock data** — `packages/core` types, `runner-mock` with scripted tasks moving through every state, then the four screens. No real git, no real agents.
-2. **Local runner** — create worktree + branch per task, spawn Claude Code in it, stream output, detect `needs_input` / `stuck` / done.
+2. **Local runner** — create worktree + branch per task, spawn the user's Claude Code or Codex in it through a per-agent adapter, stream output, detect `needs_input` / `stuck` / done. Only agents that are installed and logged in appear in the picker.
 3. **Real review and merge** — real diffs from the worktree, inline comments sent back to the agent, merge locally or open a PR via `gh`.
 4. **Cloud runner** — same interface, sandboxed remote workspaces.
 

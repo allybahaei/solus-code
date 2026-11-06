@@ -28,6 +28,10 @@ export const ALLOWED_TOOLS = [
   "Bash(git log:*)",
   "Bash(git show:*)",
   "Bash(git branch:*)",
+  // Stay inside the task's branch, for resolving conflicts when asked.
+  "Bash(git merge:*)",
+  "Bash(git add:*)",
+  "Bash(git commit:*)",
   "Bash(ls:*)",
   "Bash(pwd)",
   "Bash(rg:*)",

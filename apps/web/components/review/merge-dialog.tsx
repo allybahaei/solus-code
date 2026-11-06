@@ -6,7 +6,7 @@ import type { MergeStrategy, Task } from "@solus/core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { mergeTask, openPullRequest } from "@/lib/actions";
+import { mergeTask, openPullRequest, sendMessage } from "@/lib/actions";
 import { stripLocalLinks } from "@/lib/review-message";
 import { reviewOf, rememberMergeMode, useReview, type MergeMode } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
@@ -192,9 +192,26 @@ function MergeForm({ task, initialMode, onDone }: { task: Task; initialMode: Mer
         </p>
       )}
       {error && (
-        <p role="alert" className="rounded-md bg-state-stuck-soft px-3 py-2 text-sm text-state-stuck">
+        <div role="alert" className="rounded-md bg-state-stuck-soft px-3 py-2 text-sm text-state-stuck">
           {error}
-        </p>
+          {error.startsWith("Can't merge:") && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-2 flex text-foreground"
+              onClick={() => {
+                void sendMessage(
+                  task.id,
+                  `Merge ${target.trim()} into your branch, resolve the conflicts, and commit the merge so this branch can merge cleanly.`,
+                );
+                onDone();
+              }}
+            >
+              Ask the agent to resolve it
+            </Button>
+          )}
+        </div>
       )}
 
       <DialogFooter className="flex-row items-center sm:justify-between">

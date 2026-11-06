@@ -3,11 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "description": "Run coding agents in parallel, each in its own git worktree, and review and merge from one calm UI.",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "type": "module",
-  "bin": { "solus-code": "dist/cli.mjs" },
-  "files": ["dist", "web"],
-  "engines": { "node": ">=20" },
+  "bin": {
+    "solus-code": "dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "node build.mjs",
     "lint": "eslint src build.mjs",
@@ -23,5 +30,9 @@
     "@solus/runner-local": "workspace:*",
     "@types/node": "^22",
     "esbuild": "^0.25"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/allybahaei/solus-code.git"
   }
 }

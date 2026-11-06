@@ -8,9 +8,7 @@ A web app for running several coding agents (Claude Code and Codex in the MVP) i
 
 **Bring your own subscription.** Solus never calls a model itself. It runs the official `claude` and `codex` tools on the user's machine, on the login they already have, so usage counts against their own plan or API key. Solus has no model billing and no account in the middle. Never read, copy or proxy their login tokens. Warn when an environment variable such as `ANTHROPIC_API_KEY` would switch someone from their subscription to API billing. Check each provider's terms before running a subscription login on a remote sandbox.
 
-The bar for UX is Conductor (conductor.build), which is winding down. We match the *feel* of its core loop, not its look. We do not copy its visual design, copy, or branding.
-
-Long-term differentiator: cloud-first. Agents can run in cloud sandboxes, so the app works from any OS and from a phone. The local runner comes first; the cloud runner later implements the same interface.
+Longer term, agents can also run in cloud sandboxes, so the app works from any OS and from a phone. The cloud runner implements the same interface as the local one.
 
 ## The core loop
 
@@ -141,11 +139,3 @@ Do not start a step until the previous one feels good to use.
 - Run `pnpm lint` and `pnpm typecheck` before considering anything done.
 - Prefer small, readable components over clever abstractions.
 - No placeholder lorem ipsum in the mock data — use realistic task titles, file names and agent messages so the UX can be judged honestly.
-
-## First prompt to paste into Claude Code
-
-> Read CLAUDE.md. Set up the pnpm monorepo with `apps/web` (Next.js App Router, TypeScript strict, Tailwind, shadcn/ui) and `packages/core` with the Task, TaskState and Runner types. Then build `packages/runner-mock` with about 6 realistic tasks that move through every state over time. Don't build any screens yet. Show me the plan first, then build it and commit.
-
-## Second prompt
-
-> Read CLAUDE.md. Propose a layout for the Task board: describe it in a few lines, then show 2–3 layout options as a quick ASCII sketch each, with how each handles the attention states, keyboard navigation and a narrow (phone) screen. Recommend one. Wait for my pick, then build it against `runner-mock` and commit.

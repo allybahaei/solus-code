@@ -35,6 +35,10 @@ Not on npm yet. To build the package from this repo:
 pnpm package
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Repo settings
 
 An optional `solus.json` at the root of the repo being worked on prepares each new worktree:
@@ -42,3 +46,7 @@ An optional `solus.json` at the root of the repo being worked on prepares each n
 ```json
 { "setup": "pnpm install", "copy": [".env.local"] }
 ```
+
+## Licence
+
+[Apache 2.0](LICENSE). The Solus name and logo aren't covered by the licence. See [NOTICE](NOTICE).

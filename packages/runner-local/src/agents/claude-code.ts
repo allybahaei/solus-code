@@ -233,7 +233,9 @@ class ClaudeSession implements AgentSession {
     for (const event of stream.push(line)) {
       if (event.type === "turn_end") this.endTurn();
       if (event.type === "error") {
-        this.finish(event);
+        // Stopped before its first message was saved: nothing to resume.
+        const lost = this.start.session && event.error.message.includes("No conversation found");
+        this.finish(lost ? { type: "session_lost" } : event);
         return;
       }
       this.emit(event);

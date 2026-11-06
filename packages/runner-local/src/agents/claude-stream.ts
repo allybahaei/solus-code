@@ -37,6 +37,7 @@ export interface ClaudeLine {
   message?: { content?: ContentBlock[] | string };
   is_error?: boolean;
   result?: string;
+  errors?: string[];
   permission_denials?: { tool_name: string; tool_input?: Record<string, unknown> }[];
   rate_limit_info?: { status?: string; resetsAt?: number; rateLimitType?: string };
 }
@@ -160,7 +161,7 @@ export class ClaudeStream {
       text: `${d.tool_name}: ${summarizeTool(d.tool_name, d.tool_input ?? {}, this.cwd)}`,
     }));
     if (line.is_error || line.subtype !== "success") {
-      const message = line.result?.trim() || `Claude Code stopped (${line.subtype ?? "unknown error"})`;
+      const message = line.errors?.join("; ") || line.result?.trim() || `Claude Code stopped (${line.subtype ?? "unknown error"})`;
       return [...refused, { type: "error", error: { message } }];
     }
     return [...refused, { type: "turn_end" }];

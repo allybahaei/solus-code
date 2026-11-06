@@ -43,6 +43,8 @@ interface Rec extends StoredTask {
   /** Bumped to abandon a launch that is still preparing. */
   launch: number;
   abort?: AbortController;
+  /** What the agent was last started with, in case it has to start over. */
+  lastMessage?: string;
   /** Agent events for this task, handled strictly in order. */
   queue: Promise<void>;
 }
@@ -326,6 +328,7 @@ export class LocalRunner implements Runner {
   /** Creates the worktree on first use, then starts or resumes the agent. */
   private async launch(rec: Rec, message: string) {
     const launch = ++rec.launch;
+    rec.lastMessage = message;
     const abandoned = () => launch !== rec.launch;
     const abort = (rec.abort = new AbortController());
     try {
@@ -387,6 +390,12 @@ export class LocalRunner implements Runner {
         case "session":
           rec.agentSession = event.id;
           this.save();
+          break;
+        case "session_lost":
+          delete rec.session;
+          delete rec.agentSession;
+          this.save();
+          if (rec.task.state === "working") void this.launch(rec, rec.lastMessage ?? rec.task.prompt);
           break;
         case "ask":
           if (rec.task.state === "working") this.setState(rec, "needs_input", { question: event.question });

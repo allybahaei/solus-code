@@ -79,6 +79,12 @@ describe("ClaudeCodeAdapter", () => {
     expect(argv).not.toContain("--session-id");
   });
 
+  it("reports a lost session rather than an error", async () => {
+    run("Carry on", { session: "gone" });
+    await saw("session_lost");
+    expect(events.some((e) => e.type === "error")).toBe(false);
+  });
+
   it("carries on the same process for a second message", async () => {
     const s = run("One");
     await saw("turn_end");

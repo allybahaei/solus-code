@@ -81,6 +81,11 @@ describe("cases the recordings don't cover", () => {
     ]);
   });
 
+  it("prefers the reason in errors over a generic message", () => {
+    const line = { type: "result", subtype: "error_during_execution", is_error: true, errors: ["No conversation found"] };
+    expect(stream().push(line)).toEqual([{ type: "error", error: { message: "No conversation found" } }]);
+  });
+
   it("ignores subagent traffic", () => {
     expect(stream().push({ type: "result", subtype: "success", parent_tool_use_id: "toolu_1" })).toEqual([]);
   });

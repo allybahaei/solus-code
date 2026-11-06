@@ -33,6 +33,11 @@ function callTool(name, args) {
   });
 }
 
+if (value("--resume") === "gone") {
+  out({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["No conversation found with session ID: gone"] });
+  process.exit(1);
+}
+
 out({ type: "system", subtype: "init", session_id });
 let turn = 0;
 createInterface({ input: process.stdin }).on("line", async (line) => {

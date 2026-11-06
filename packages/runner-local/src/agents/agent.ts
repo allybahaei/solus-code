@@ -10,6 +10,8 @@ export type AgentEvent =
   | { type: "files_changed" }
   /** The agent's id for this conversation, to resume it later. */
   | { type: "session"; id: string }
+  /** The session to resume doesn't exist, so it needs a fresh start. The session is over. */
+  | { type: "session_lost" }
   /** The agent has a question. The reply arrives through send(). */
   | { type: "ask"; question: string }
   /** The agent wants to run something and is waiting for approve() or send(). */

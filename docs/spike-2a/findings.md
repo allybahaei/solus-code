@@ -48,3 +48,10 @@ These need checking in 2d before relying on them.
 ## Decided since
 
 - **A long human wait:** `ask_user` no longer blocks. It returns at once and tells the agent to end its turn, and the answer arrives as the next message, so no tool timeout applies. Approvals must block, so the adapter sets `MCP_TOOL_TIMEOUT` to a day; whether Claude Code honours that for long waits is checked in the first real run.
+
+## From the first live run
+
+- **Approvals held 80+ seconds** kept working with `MCP_TOOL_TIMEOUT` set, then ran normally on Allow.
+- **`acceptEdits` covers more than edits.** `touch approved.txt` ran with no prompt, so simple file commands inside the worktree don't reach the approval step. `curl` did. The agent can change files freely in its worktree; approvals are for everything else.
+- **Stopping very early leaves nothing to resume.** The session file exists but `--resume` fails with "No conversation found". The adapter reports `session_lost`, and the runner starts fresh with the task and the latest message.
+- **Error text is in `errors`**, not `result`, on `error_during_execution`.

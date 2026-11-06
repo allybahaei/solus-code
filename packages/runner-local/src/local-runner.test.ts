@@ -290,6 +290,33 @@ it("makes safe slugs", () => {
   expect(slugify("???")).toBe("task");
 });
 
+it("starts over with the task and the latest message when the session is gone", async () => {
+  const prompts: string[] = [];
+  const adapter: AgentAdapter = {
+    start(options, emit) {
+      prompts.push(options.prompt);
+      if (options.session) queueMicrotask(() => emit({ type: "session_lost" }));
+      else {
+        emit({ type: "session", id: "s1" });
+        queueMicrotask(() => emit({ type: "turn_end" }));
+      }
+      return { send() {}, approve() {}, stop() {} };
+    },
+  };
+  runner = await LocalRunner.open({ repoPath: repo, home, adapterFor: () => adapter });
+  const t = await newTask(runner, "Write a poem");
+  await runner.startTask(t.id);
+  await reaches(runner, t.id, "ready_for_review");
+
+  // Drops the live session, as a stop or restart would.
+  await runner.sendMessage(t.id, "Stop that");
+  await runner.stopTask(t.id).catch(() => {});
+  await reaches(runner, t.id, "stuck");
+  await runner.sendMessage(t.id, "Make it short");
+  await reaches(runner, t.id, "ready_for_review");
+  expect(prompts.at(-1)).toBe("Write a poem\n\nMake it short");
+});
+
 describe("approvals", () => {
   const approving = (): AgentAdapter => ({
     start(_options, emit) {

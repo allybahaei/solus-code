@@ -1,6 +1,6 @@
 import type { Diff, DiffFile } from "./diff";
 import type { AgentMessage, RunnerEvent } from "./events";
-import type { AgentKind, Chat, CreateTaskInput, PullRequestStatus, Task, TaskSources } from "./task";
+import type { AgentKind, Chat, ChatOptions, CreateTaskInput, ModelOption, PullRequestStatus, Task, TaskSources } from "./task";
 
 export type MergeStrategy = "merge" | "squash" | "rebase";
 
@@ -136,6 +136,14 @@ export interface Runner {
   writeTerminal(id: string, data: string): Promise<void>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<void>;
   getDiff(id: string): Promise<Diff>;
+  /** Files in the task's worktree, or the repo before it has one, for mentioning. */
+  listFiles(id: string): Promise<string[]>;
+  /** Models an agent can run. Empty when Solus can't choose one for it. */
+  listModels(agent: AgentKind): Promise<ModelOption[]>;
+  /** Sets how a chat's agent runs, from its next message on. */
+  setChatOptions(id: string, options: ChatOptions, chat?: string): Promise<void>;
+  /** Rewrites a waiting message. Empty text removes it. */
+  editQueued(id: string, queuedId: string, text: string, chat?: string): Promise<void>;
   /** Apps on this machine that can open a task's folder. */
   listOpenTargets(): Promise<OpenTarget[]>;
   /** Opens the task's worktree in one of those apps. */

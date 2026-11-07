@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { AgentMessage, Task } from "@solus/core";
 import { Markdown } from "@/components/markdown";
+import { splitMentions } from "@/lib/composer";
 import { useTypedText } from "@/lib/typewriter";
 import { cn } from "@/lib/utils";
 
@@ -77,7 +78,7 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
           ) : item.message.role === "user" ? (
             <div key={item.message.id} className="flex justify-end">
               <div className="max-w-[85%] rounded-2xl bg-user-bubble px-5 py-3.5 whitespace-pre-wrap">
-                {item.message.text}
+                <UserText text={item.message.text} />
               </div>
             </div>
           ) : (
@@ -97,6 +98,18 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
         )}
       </div>
     </div>
+  );
+}
+
+function UserText({ text }: { text: string }) {
+  return splitMentions(text).map((part, i) =>
+    part.mention ? (
+      <span key={i} className="rounded bg-foreground/10 px-1 py-0.5 font-mono text-[0.8125rem]">
+        {part.text.slice(1)}
+      </span>
+    ) : (
+      part.text
+    ),
   );
 }
 

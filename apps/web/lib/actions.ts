@@ -3,6 +3,7 @@
 import {
   MAIN_CHAT,
   type AgentKind,
+  type ChatOptions,
   type MergeOptions,
   type MergeStrategy,
   type PROptions,
@@ -91,6 +92,18 @@ export async function openInEditor(id: string) {
   const target = openTargets?.find((t) => t.id === settings.editor) ?? openTargets?.find((t) => t.kind === "editor") ?? openTargets?.[0];
   if (target) await openWorkspace(id, target.id);
 }
+
+export const listFiles = (id: string) => attempt(() => getRunner().listFiles(id));
+
+/** Asks once per agent: it can start a process. */
+export async function loadModels(agent: AgentKind) {
+  if (useSolus.getState().models[agent]) return;
+  const models = await attempt(() => getRunner().listModels(agent));
+  if (models) useSolus.setState((s) => ({ models: { ...s.models, [agent]: models } }));
+}
+
+export const setChatOptions = (id: string, options: ChatOptions, chat: string) => attempt(() => getRunner().setChatOptions(id, options, chat));
+export const editQueued = (id: string, queuedId: string, text: string, chat: string) => attempt(() => getRunner().editQueued(id, queuedId, text, chat));
 
 export async function loadSettings() {
   const settings = await attempt(() => getRunner().getSettings());

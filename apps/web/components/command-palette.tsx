@@ -6,6 +6,7 @@ import { STATE_LABELS } from "@solus/core";
 import { StateDot } from "@/components/state-dot";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { archiveTask, loadOpenTargets, newChat, openWorkspace, startTask, stopTask } from "@/lib/actions";
+import { matchScore } from "@/lib/composer";
 import { useReview } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
 import { SHORTCUTS } from "@/lib/shortcuts";
@@ -17,24 +18,6 @@ interface Command {
   hint?: string;
   icon?: React.ReactNode;
   run: () => void;
-}
-
-/** Every typed letter must appear in order, and tighter matches rank first. */
-export function matchScore(query: string, text: string): number | null {
-  const q = query.toLowerCase();
-  const t = text.toLowerCase();
-  if (!q) return 0;
-  const at = t.indexOf(q);
-  if (at !== -1) return at;
-  let from = 0;
-  let gaps = 0;
-  for (const ch of q) {
-    const i = t.indexOf(ch, from);
-    if (i === -1) return null;
-    gaps += i - from;
-    from = i + 1;
-  }
-  return 100 + gaps;
 }
 
 function useCommands(): Command[] {

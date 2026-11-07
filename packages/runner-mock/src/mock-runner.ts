@@ -8,6 +8,7 @@ import {
   type DiffFile,
   type MergeOptions,
   type MessageRole,
+  type ModelOption,
   type OpenTarget,
   type Settings,
   type PROptions,
@@ -271,6 +272,23 @@ export class MockRunner implements Runner {
     this.term(rec, `${ansi.yellow("^C")}\r\n`);
     this.setState(rec, "stuck", { error: { message: "Stopped by you" } });
   }
+
+  async listFiles(id: string): Promise<string[]> {
+    return [...this.get(id).files.keys()];
+  }
+
+  async listModels(agent: AgentKind): Promise<ModelOption[]> {
+    return agent === "claude-code" || agent === "codex"
+      ? [
+          { id: "large", label: "Large", efforts: ["low", "medium", "high"] },
+          { id: "small", label: "Small", efforts: [] },
+        ]
+      : [];
+  }
+
+  async setChatOptions(): Promise<void> {}
+
+  async editQueued(): Promise<void> {}
 
   async listOpenTargets(): Promise<OpenTarget[]> {
     return [

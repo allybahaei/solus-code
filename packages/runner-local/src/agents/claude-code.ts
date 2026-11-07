@@ -147,7 +147,7 @@ class ClaudeSession implements AgentSession {
   }
 
   private launch(tools: ToolServer) {
-    const { cwd, session, prompt } = this.start;
+    const { cwd, session, prompt, options } = this.start;
     const sessionId = session ?? randomUUID();
     const mcpConfig = join(tools.dir, "mcp.json");
     writeFileSync(
@@ -168,7 +168,9 @@ class ClaudeSession implements AgentSession {
         "--verbose",
         "--include-partial-messages",
         ...(session ? ["--resume", session] : ["--session-id", sessionId]),
-        "--permission-mode", "acceptEdits",
+        "--permission-mode", options?.plan ? "plan" : "acceptEdits",
+        ...(options?.model ? ["--model", options.model] : []),
+        ...(options?.effort ? ["--effort", options.effort] : []),
         "--mcp-config", mcpConfig,
         "--permission-prompt-tool", "mcp__solus__approve",
         // One argument each: these contain spaces.

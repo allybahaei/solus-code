@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { DEFAULT_SETTINGS, MAIN_CHAT, chatsOf, type AgentMessage, type Chat, type DiffFile, type OpenTarget, type RepoInfo, type Runner, type RunnerSnapshot, type Settings, type SetupStatus, type Task } from "@solus/core";
+import { DEFAULT_SETTINGS, MAIN_CHAT, chatsOf, type AgentMessage, type AgentKind, type Chat, type DiffFile, type ModelOption, type OpenTarget, type RepoInfo, type Runner, type RunnerSnapshot, type Settings, type SetupStatus, type Task } from "@solus/core";
 import { navOrder } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
@@ -52,6 +52,8 @@ interface SolusState {
   /** Apps that can open a worktree, once asked for. */
   openTargets: OpenTarget[] | null;
   settings: Settings;
+  /** Models per agent, once asked for. */
+  models: Partial<Record<AgentKind, ModelOption[]>>;
 
   open: (id: string) => void;
   openChat: (taskId: string, chatId: string) => void;
@@ -176,6 +178,7 @@ export const useSolus = create<SolusState>()((set, get) => ({
   overlay: null,
   openTargets: null,
   settings: DEFAULT_SETTINGS,
+  models: {},
 
   open: (id) =>
     set((s) => ({

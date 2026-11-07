@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import { createInterface } from "node:readline";
-import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
+import { PLAN_ONLY, type AgentAdapter, type AgentEvent, type AgentSession, type AgentStart } from "./agent";
 import { BRIDGE, bridgeEnv, ToolServer } from "./tool-server";
 
 export interface AcpOptions {
@@ -201,7 +201,7 @@ class AcpSession implements AgentSession {
     try {
       const result = await this.call("session/prompt", {
         sessionId: this.sessionId,
-        prompt: [{ type: "text", text }],
+        prompt: [{ type: "text", text: this.start.options?.plan ? `${PLAN_ONLY}\n\n${text}` : text }],
       });
       if (this.over) return;
       this.closeText();

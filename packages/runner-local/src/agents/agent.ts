@@ -1,4 +1,4 @@
-import type { TaskError } from "@solus/core";
+import type { ChatOptions, TaskError } from "@solus/core";
 
 /** What an agent reports. Each adapter turns its tool's output into these. */
 export type AgentEvent =
@@ -31,7 +31,13 @@ export interface AgentStart {
   session?: string;
   /** Extra environment, such as the task's port. */
   env?: NodeJS.ProcessEnv;
+  /** Model, effort and plan mode, where the agent supports them. */
+  options?: ChatOptions;
 }
+
+/** For agents with no plan mode of their own. */
+export const PLAN_ONLY =
+  "Plan mode: read what you need, then propose a plan. Don't change any files or run anything that does. Wait for the person to approve it.";
 
 /** One running conversation with an agent. */
 export interface AgentSession {

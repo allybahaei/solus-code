@@ -22,7 +22,9 @@ import {
   type RunnerSnapshot,
   type SetupStatus,
   type Chat,
+  type ChatOptions,
   type MergeStrategy,
+  type ModelOption,
   type OpenTarget,
   type PullRequestStatus,
   type Settings,
@@ -33,6 +35,7 @@ import {
 } from "@solus/core";
 import { RunningAction } from "./action";
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
+import { listModels } from "./agents/models";
 import { readDiff } from "./diff";
 import { branchExists, git, readRepo } from "./git";
 import {
@@ -76,6 +79,8 @@ interface Run {
   launching?: Promise<void>;
   /** What the agent was last started with, in case it has to start over. */
   lastMessage?: string;
+  /** The options the running session started with. */
+  startedWith?: string;
 }
 
 interface Rec extends StoredTask {
@@ -105,6 +110,11 @@ const titleFrom = (message: string) => {
 
 /** Where attached files go. Inside the worktree so agents can read them, but never committed. */
 const ATTACHMENTS = ".solus-attachments";
+
+/** The most files a mention search looks through. */
+const MAX_FILES = 20_000;
+
+const optionsKey = (chat: Chat) => JSON.stringify(chat.options ?? {});
 
 /** Each task gets a block of ports, so apps in parallel worktrees don't collide. */
 const FIRST_TASK_PORT = 41000;
@@ -288,6 +298,14 @@ export class LocalRunner implements Runner {
     if (state === "idle") throw new Error(`Start task ${id} before messaging it.`);
     if (state === "merged") throw new Error(`Task ${id} is merged.`);
     const run = this.runOf(rec, opts.chat);
+    const sameAgent = !opts.agent || opts.agent === run.chat.agent;
+
+    // Busy: it waits where the person can see, edit or remove it.
+    if (run.chat.state === "working" && sameAgent) {
+      (run.chat.queued ??= []).push({ id: `q_${randomBytes(6).toString("hex")}`, text: message });
+      this.updated(rec);
+      return;
+    }
 
     if (opts.agent && opts.agent !== run.chat.agent) {
       // A different agent can't continue this one's session.
@@ -300,8 +318,46 @@ export class LocalRunner implements Runner {
     if (run.chat.title === NEW_CHAT) run.chat.title = titleFrom(message);
     this.addMessage(rec, "user", message, undefined, run);
     if (run.chat.state !== "working") this.setChat(rec, run, "working");
-    if (run.session) run.session.send(message);
-    else run.launching = this.launch(rec, run, message);
+    this.deliver(rec, run, message);
+  }
+
+  async listFiles(id: string): Promise<string[]> {
+    const { worktree } = this.get(id);
+    const cwd = worktree && existsSync(worktree) ? worktree : this.repo.path;
+    const out = await git(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"]);
+    return out.split("\n").filter(Boolean).slice(0, MAX_FILES);
+  }
+
+  listModels(agent: AgentKind): Promise<ModelOption[]> {
+    return listModels(agent, this.commands.codex);
+  }
+
+  async setChatOptions(id: string, options: ChatOptions, chat?: string): Promise<void> {
+    const rec = this.get(id);
+    this.runOf(rec, chat).chat.options = options;
+    this.updated(rec);
+  }
+
+  async editQueued(id: string, queuedId: string, text: string, chat?: string): Promise<void> {
+    const rec = this.get(id);
+    const run = this.runOf(rec, chat);
+    const queued = run.chat.queued ?? [];
+    const message = queued.find((q) => q.id === queuedId);
+    if (!message) throw new Error("That message has already gone to the agent.");
+    if (text.trim()) message.text = text;
+    else run.chat.queued = queued.filter((q) => q.id !== queuedId);
+    this.updated(rec);
+  }
+
+  /** Sends to the running session, or starts one if there's none or its options changed. */
+  private deliver(rec: Rec, run: Run, message: string) {
+    if (run.session && run.startedWith === optionsKey(run.chat)) {
+      run.session.send(message);
+      return;
+    }
+    run.session?.stop();
+    delete run.session;
+    run.launching = this.launch(rec, run, message);
   }
 
   async answerApproval(id: string, approvalId: string, allow: boolean): Promise<void> {
@@ -899,8 +955,10 @@ export class LocalRunner implements Runner {
       const session = run.agentSession;
       const { prompt: task } = rec.task;
       const prompt = session || message === task || run.chat.id !== MAIN_CHAT ? message : `${task}\n\n${message}`;
+      const { options } = run.chat;
+      run.startedWith = optionsKey(run.chat);
       run.session = this.adapterFor(run.chat.agent).start(
-        { taskId: rec.task.id, cwd, prompt, env: this.workspaceEnv(rec), ...(session ? { session } : {}) },
+        { taskId: rec.task.id, cwd, prompt, env: this.workspaceEnv(rec), ...(session ? { session } : {}), ...(options ? { options } : {}) },
         (event) => {
           if (!abandoned()) rec.queue = rec.queue.then(() => this.onAgentEvent(rec, run, event));
         },
@@ -988,7 +1046,9 @@ export class LocalRunner implements Runner {
           break;
         case "turn_end":
           await this.refreshDiff(rec);
-          if (run.chat.state === "working") this.setChat(rec, run, "ready_for_review");
+          if (run.chat.state !== "working") break;
+          if (run.chat.queued?.length) this.sendNextQueued(rec, run);
+          else this.setChat(rec, run, "ready_for_review");
           break;
         case "error":
           delete run.session;
@@ -1003,6 +1063,16 @@ export class LocalRunner implements Runner {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** The turn ended with messages waiting, so the next one starts another. */
+  private sendNextQueued(rec: Rec, run: Run) {
+    const next = run.chat.queued?.shift();
+    if (!next) return;
+    if (run.chat.queued?.length === 0) delete run.chat.queued;
+    this.updated(rec);
+    this.addMessage(rec, "user", next.text, undefined, run);
+    this.deliver(rec, run, next.text);
   }
 
   private onText(rec: Rec, run: Run, event: Extract<AgentEvent, { type: "text" }>) {

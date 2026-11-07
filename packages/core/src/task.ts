@@ -64,6 +64,27 @@ export interface PullRequestStatus {
 /** The chat every task starts with. Its messages have no chatId. */
 export const MAIN_CHAT = "main";
 
+/** How a chat's agent runs. Changing these takes effect on its next message. */
+export interface ChatOptions {
+  model?: string;
+  effort?: string;
+  /** Propose a plan and change nothing until told to. */
+  plan?: boolean;
+}
+
+/** A message waiting for the agent to finish its turn. */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+}
+
+/** A model an agent can run, and the effort levels it takes. */
+export interface ModelOption {
+  id: string;
+  label: string;
+  efforts: string[];
+}
+
 /** One conversation with an agent. All of a task's chats share its worktree. */
 export interface Chat {
   id: string;
@@ -75,6 +96,9 @@ export interface Chat {
   question?: string;
   approval?: ApprovalRequest;
   error?: TaskError;
+  options?: ChatOptions;
+  /** Waiting to go, oldest first. */
+  queued?: QueuedMessage[];
 }
 
 export interface Task {

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
+import { PLAN_ONLY, type AgentAdapter, type AgentEvent, type AgentSession, type AgentStart } from "./agent";
 import { CodexStream, unwrapCommand, type CodexNotification } from "./codex-stream";
 import { BRIDGE, bridgeEnv, ToolServer } from "./tool-server";
 
@@ -144,11 +144,14 @@ class CodexSession implements AgentSession {
   }
 
   private async open() {
+    const { options } = this.start;
     const settings = {
       cwd: this.start.cwd,
-      sandbox: "workspace-write",
+      // Read-only makes plan mode a fact, not just a request.
+      sandbox: options?.plan ? "read-only" : "workspace-write",
       approvalPolicy: "on-request",
-      developerInstructions: INSTRUCTIONS,
+      developerInstructions: options?.plan ? `${INSTRUCTIONS} ${PLAN_ONLY}` : INSTRUCTIONS,
+      ...(options?.model ? { model: options.model } : {}),
     };
     try {
       await this.call("initialize", { clientInfo: { name: "solus", title: "Solus", version: "0.1.0" }, capabilities: null });
@@ -171,7 +174,8 @@ class CodexSession implements AgentSession {
   private runTurn(text: string) {
     this.inTurn = true;
     this.armStall();
-    this.call("turn/start", { threadId: this.thread, input: [{ type: "text", text }] }).then(
+    const effort = this.start.options?.effort;
+    this.call("turn/start", { threadId: this.thread, input: [{ type: "text", text }], ...(effort ? { effort } : {}) }).then(
       (result) => {
         this.turnId = (result as { turn: { id: string } }).turn.id;
       },

@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ChatOptions } from "@solus/core";
 import type { AgentEvent, AgentSession } from "./agent";
 import { CodexAdapter } from "./codex";
 
@@ -27,9 +28,9 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function run(prompt: string, extra: { session?: string; stallMs?: number; command?: string } = {}) {
+function run(prompt: string, extra: { session?: string; stallMs?: number; command?: string; options?: ChatOptions } = {}) {
   session = new CodexAdapter({ command: extra.command ?? command, ...(extra.stallMs ? { stallMs: extra.stallMs } : {}) }).start(
-    { taskId: "t1", cwd: dir, prompt, ...(extra.session ? { session: extra.session } : {}) },
+    { taskId: "t1", cwd: dir, prompt, ...(extra.session ? { session: extra.session } : {}), ...(extra.options ? { options: extra.options } : {}) },
     (e) => events.push(e),
   );
   return session;
@@ -136,6 +137,19 @@ describe("CodexAdapter", () => {
     run("Go [token]");
     await saw("turn_end");
     expect(logged().find((l) => l.tokenReply)?.tokenReply.error.code).toBe(-32601);
+  });
+
+  it("runs with the chosen model and effort", async () => {
+    run("Hi", { options: { model: "big", effort: "high" } });
+    await saw("turn_end");
+    expect(calls("thread/start")[0]?.params.model).toBe("big");
+    expect(calls("turn/start")[0]?.params.effort).toBe("high");
+  });
+
+  it("makes plan mode read-only", async () => {
+    run("Hi", { options: { plan: true } });
+    await saw("turn_end");
+    expect(calls("thread/start")[0]?.params).toMatchObject({ sandbox: "read-only", developerInstructions: expect.stringContaining("Plan mode") });
   });
 
   it("explains a Codex too old for the app server", async () => {

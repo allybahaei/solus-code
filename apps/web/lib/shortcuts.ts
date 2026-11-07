@@ -28,6 +28,7 @@ export const SHORTCUTS: { group: string; items: { keys: string[]; label: string 
     items: [
       { keys: ["S"], label: "Start" },
       { keys: ["O"], label: "Open in your editor" },
+      { keys: ["T"], label: "Give the terminal the whole window" },
       { keys: ["R"], label: "Review the diff" },
       { keys: ["M"], label: "Merge" },
       { keys: ["P"], label: "Open a pull request" },

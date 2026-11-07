@@ -20,6 +20,7 @@ const ASK_REPLY = "Your question is on the person's screen. End your turn now; t
 
 export interface ToolHandlers {
   onAsk: (question: string) => void;
+  onBranchName?: (name: string) => void;
   /** Keep the socket: answer with ToolServer.reply once the person decides. */
   onApproval?: (socket: Socket, args: Record<string, unknown>) => void;
 }
@@ -41,6 +42,9 @@ export class ToolServer {
           // they like, and the question survives a restart.
           handlers.onAsk(String(args.question ?? "The agent has a question."));
           ToolServer.reply(socket, ASK_REPLY);
+        } else if (tool === "set_branch_name") {
+          handlers.onBranchName?.(String(args.name ?? ""));
+          ToolServer.reply(socket, "Thanks. Carry on.");
         } else if (tool === "approve") {
           handlers.onApproval?.(socket, args);
         }

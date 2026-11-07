@@ -12,6 +12,8 @@ export type AgentEvent =
   | { type: "session"; id: string }
   /** The session to resume doesn't exist, so it needs a fresh start. The session is over. */
   | { type: "session_lost" }
+  /** The agent's name for this task's branch. */
+  | { type: "branch_name"; name: string }
   /** The agent has a question. The reply arrives through send(). */
   | { type: "ask"; question: string }
   /** The agent wants to run something and is waiting for approve() or send(). */

@@ -102,7 +102,7 @@ class AcpSession implements AgentSession {
     private readonly options: AcpOptions,
   ) {
     this.stallMs = options.stallMs ?? STALL_MS;
-    this.tools = new ToolServer({ onAsk: (question) => emit({ type: "ask", question }) });
+    this.tools = new ToolServer({ onAsk: (question) => emit({ type: "ask", question }), onBranchName: (name) => emit({ type: "branch_name", name }) });
     this.child = spawn(options.command, options.args, {
       cwd: start.cwd,
       env: { ...process.env, ...start.env, ...options.env },

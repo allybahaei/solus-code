@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Play, Square } from "lucide-react";
+import { Maximize2, Minimize2, ArrowUpRight, Play, Square } from "lucide-react";
 import type { Task } from "@solus/core";
 import { TerminalView } from "@/components/side/terminal";
 import { Button } from "@/components/ui/button";
@@ -34,9 +34,21 @@ export function BottomPane({ task }: { task: Task }) {
             {tab === t && <span className="absolute inset-x-1 bottom-0 h-0.5 rounded-full bg-foreground" />}
           </button>
         ))}
+        <BigToggle />
       </div>
       {tab === "run" ? <RunPanel task={task} /> : <TerminalView task={task} />}
     </section>
+  );
+}
+
+function BigToggle() {
+  const big = useSolus((s) => s.terminalBig);
+  const toggle = useSolus((s) => s.toggleTerminalBig);
+  const label = big ? "Shrink the terminal (T)" : "Give the terminal the whole window (T)";
+  return (
+    <button type="button" onClick={toggle} aria-pressed={big} aria-label={label} title={label} className="my-auto ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+      {big ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+    </button>
   );
 }
 

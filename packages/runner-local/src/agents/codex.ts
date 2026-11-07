@@ -18,6 +18,7 @@ const METHOD_NOT_FOUND = -32601;
 const INSTRUCTIONS = [
   "You are running inside Solus, in a git worktree made for this task. A person reviews your diff when you finish.",
   "When you need a decision from them, call the ask_user tool from the solus MCP server, then end your turn. Their answer arrives as your next message.",
+  "Before your first edit in a new task, call the set_branch_name tool from the solus MCP server, once.",
   "Leave your changes in the working tree. Solus handles committing and merging.",
 ].join(" ");
 
@@ -72,7 +73,7 @@ class CodexSession implements AgentSession {
     this.stallMs = options.stallMs ?? STALL_MS;
     this.thread = start.session;
     this.stream = new CodexStream(start.cwd);
-    this.tools = new ToolServer({ onAsk: (question) => emit({ type: "ask", question }) });
+    this.tools = new ToolServer({ onAsk: (question) => emit({ type: "ask", question }), onBranchName: (name) => emit({ type: "branch_name", name }) });
     if (process.env.CODEX_API_KEY) {
       emit({
         type: "terminal",

@@ -15,7 +15,7 @@ import {
 } from "@solus/core";
 import { useReview } from "@/lib/review-store";
 import { getRunner } from "./runner";
-import { activeChatId, useSolus } from "./store";
+import { activeChatId, useSolus, type PullRequestHealth } from "./store";
 
 /** Runs a runner call; a failure shows as a notice instead of throwing. */
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -44,6 +44,25 @@ export async function readPullRequest(id: string): Promise<PullRequestStatus | s
     return await getRunner().getPullRequest(id);
   } catch (err) {
     return message(err);
+  }
+}
+
+/** Checks every open pull request, for the sidebar. GitHub is slow, so this runs in the background. */
+export async function refreshPullRequests() {
+  const { tasks } = useSolus.getState();
+  const open = Object.values(tasks).filter((t) => t.pullRequest && t.state !== "merged" && !t.archivedAt);
+  for (const task of open) {
+    const status = await readPullRequest(task.id);
+    if (typeof status === "string") continue;
+    const states = status.checks.map((c) => c.state);
+    const health: PullRequestHealth = status.conflicts
+      ? "conflict"
+      : states.includes("failed")
+        ? "failed"
+        : states.includes("pending")
+          ? "pending"
+          : "passed";
+    useSolus.setState((s) => ({ prHealth: { ...s.prHealth, [task.id]: health } }));
   }
 }
 

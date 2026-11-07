@@ -33,6 +33,7 @@ export function AppShell() {
   const rightPaneOpen = useSolus((s) => s.rightPaneOpen);
   const sidebarOpen = useSolus((s) => s.sidebarOpen);
   const hasTask = useSolus((s) => s.activeId !== null);
+  const terminalBig = useSolus((s) => s.terminalBig) && wide && hasTask;
 
   useEffect(() => connectRunner(getRunner(), getConnection()), []);
   useEffect(() => loadReviewPrefs(), []);
@@ -51,12 +52,12 @@ export function AppShell() {
       >
         <Sidebar />
       </aside>
-      <main className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", showList ? "hidden" : "flex")}>
+      <main className={cn("min-h-0 min-w-0 flex-1 flex-col", showList ? "hidden" : "flex", terminalBig ? "md:hidden" : "md:flex")}>
         <ConnectionBanner />
         <TabBar />
         <ActiveTask wide={wide} />
       </main>
-      {wide && rightPaneOpen && hasTask && <RightPane />}
+      {wide && (rightPaneOpen || terminalBig) && hasTask && <RightPane big={terminalBig} />}
       <NewTaskDialog />
       <MergeDialog />
       <CommandPalette />
@@ -135,17 +136,19 @@ function ActiveTask({ wide }: { wide: boolean }) {
   );
 }
 
-function RightPane() {
+function RightPane({ big }: { big: boolean }) {
   const task = useSolus((s) => (s.activeId ? s.tasks[s.activeId] : undefined));
   const files = useSolus((s) => (s.activeId ? s.diffs[s.activeId] : undefined)) ?? EMPTY;
   return (
-    <aside className="flex w-[19rem] shrink-0 flex-col border-l xl:w-[21rem]">
+    <aside className={cn("flex shrink-0 flex-col border-l", big ? "min-w-0 flex-1" : "w-[19rem] xl:w-[21rem]")}>
       {task ? (
         <>
           <TaskBar task={task} />
-          <div className="flex min-h-0 flex-1 flex-col">
-            <Changes key={task.id} task={task} files={files} />
-          </div>
+          {!big && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <Changes key={task.id} task={task} files={files} />
+            </div>
+          )}
           <div className="flex min-h-0 flex-1 flex-col border-t">
             <BottomPane key={task.id} task={task} />
           </div>
@@ -310,6 +313,9 @@ function useKeyboard() {
           case "?":
             s.setOverlay("shortcuts");
             return true;
+          case "t":
+            if (task) s.toggleTerminalBig();
+            return !!task;
           case "o":
             if (task) void openInEditor(task.id);
             return true;

@@ -1098,6 +1098,9 @@ export class LocalRunner implements Runner {
           this.save();
           if (run.chat.state === "working") run.launching = this.launch(rec, run, run.lastMessage ?? rec.task.prompt);
           break;
+        case "branch_name":
+          await this.nameBranch(rec, event.name);
+          break;
         case "ask":
           if (run.chat.state === "working") this.setChat(rec, run, "needs_input", { question: event.question });
           break;
@@ -1128,6 +1131,18 @@ export class LocalRunner implements Runner {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** Only Solus's own branches, once, and never one a pull request depends on. */
+  private async nameBranch(rec: Rec, name: string) {
+    const { task } = rec;
+    if (task.branchNamed || task.pullRequest || rec.existingBranch || !/[a-z0-9]/i.test(name) || !rec.worktree) return;
+    task.branchNamed = true;
+    const taken = new Set([...this.records.values()].map((r) => r.task.branch));
+    const branch = await uniqueBranch(this.repo.path, name, taken);
+    await git(rec.worktree, ["branch", "-m", task.branch, branch]);
+    task.branch = branch;
+    this.updated(rec);
   }
 
   /** The turn ended with messages waiting, so the next one starts another. */

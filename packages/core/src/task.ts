@@ -135,6 +135,8 @@ export interface Task {
   pullRequest?: PullRequestRef;
   /** Set once merged locally: the branch it was merged into. */
   mergedInto?: string;
+  /** The agent has named the branch, so it won't be renamed again. */
+  branchNamed?: boolean;
   /** Snapshots of the worktree, by the user message they were taken before. */
   checkpoints?: Record<string, string>;
 }

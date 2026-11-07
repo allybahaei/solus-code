@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { DEFAULT_SETTINGS, MAIN_CHAT, chatsOf, type AgentMessage, type AgentKind, type Chat, type DiffFile, type ModelOption, type OpenTarget, type RepoInfo, type Runner, type RunnerSnapshot, type Settings, type SetupStatus, type Task } from "@solus/core";
-import { navOrder } from "./groups";
+import { DEFAULT_VIEW, navOrder, type SidebarView } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
 export type CenterView = "chat" | "changes" | "terminal" | "run";
@@ -54,6 +54,11 @@ interface SolusState {
   settings: Settings;
   /** Models per agent, once asked for. */
   models: Partial<Record<AgentKind, ModelOption[]>>;
+  sidebarView: SidebarView;
+  /** Open pull requests' overall state, by task. */
+  prHealth: Record<string, PullRequestHealth>;
+  /** The terminal has the whole window, beside the sidebar. */
+  terminalBig: boolean;
 
   open: (id: string) => void;
   openChat: (taskId: string, chatId: string) => void;
@@ -71,9 +76,22 @@ interface SolusState {
   toggleRightPane: () => void;
   toggleSidebar: () => void;
   setOverlay: (overlay: Overlay | null) => void;
+  setSidebarView: (view: Partial<SidebarView>) => void;
+  toggleTerminalBig: () => void;
 }
 
 const RENAMES_KEY = "solus.renames";
+const VIEW_KEY = "solus.sidebarView";
+
+export type PullRequestHealth = "passed" | "failed" | "pending" | "conflict";
+
+function loadView(): SidebarView {
+  try {
+    return { ...DEFAULT_VIEW, ...(JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Partial<SidebarView>) };
+  } catch {
+    return DEFAULT_VIEW;
+  }
+}
 
 function loadRenames(): Record<string, string> {
   try {
@@ -179,6 +197,9 @@ export const useSolus = create<SolusState>()((set, get) => ({
   openTargets: null,
   settings: DEFAULT_SETTINGS,
   models: {},
+  sidebarView: DEFAULT_VIEW,
+  prHealth: {},
+  terminalBig: false,
 
   open: (id) =>
     set((s) => ({
@@ -215,8 +236,8 @@ export const useSolus = create<SolusState>()((set, get) => ({
   },
 
   move: (delta) => {
-    const { tasks, activeId, showMerged, open, pinned, query } = get();
-    const order = navOrder(Object.values(tasks), pinned, showMerged, query ?? "");
+    const { tasks, activeId, showMerged, open, pinned, query, sidebarView } = get();
+    const order = navOrder(Object.values(tasks), pinned, showMerged, query ?? "", sidebarView);
     if (order.length === 0) return;
     const i = order.findIndex((t) => t.id === activeId);
     const next = i === -1 ? order[0] : order[Math.min(order.length - 1, Math.max(0, i + delta))];
@@ -249,6 +270,15 @@ export const useSolus = create<SolusState>()((set, get) => ({
   toggleRightPane: () => set((s) => ({ rightPaneOpen: !s.rightPaneOpen })),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setOverlay: (overlay) => set({ overlay }),
+  setSidebarView: (changes) =>
+    set((s) => {
+      const sidebarView = { ...s.sidebarView, ...changes };
+      try {
+        localStorage.setItem(VIEW_KEY, JSON.stringify(sidebarView));
+      } catch {}
+      return { sidebarView };
+    }),
+  toggleTerminalBig: () => set((s) => ({ terminalBig: !s.terminalBig })),
 }));
 
 /** A runner reached over a connection that can drop, such as RemoteRunner. */
@@ -269,6 +299,7 @@ function applySnapshot(snapshot: RunnerSnapshot) {
       repo: snapshot.repo,
       pinned: loadPinned(),
       renames: loadRenames(),
+      sidebarView: loadView(),
       // Everything that happened before you opened the app counts as seen.
       lastSeen: Object.fromEntries(snapshot.tasks.map((t) => [t.id, s.lastSeen[t.id] ?? Date.now()])),
       tasks: Object.fromEntries(snapshot.tasks.map((t) => [t.id, t])),

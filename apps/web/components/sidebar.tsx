@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowRight, House, Monitor, Moon, PanelLeft, Pin, PinOff, Plus, Search, Settings, Sun, X } from "lucide-react";
+import { ArrowRight, GitPullRequest, House, ListFilter, Monitor, Moon, PanelLeft, Pin, PinOff, Plus, Search, Settings, Sun, X } from "lucide-react";
 import { STATE_LABELS, isAttention, type Task, type TaskState } from "@solus/core";
 import {
   DropdownMenu,
@@ -11,7 +11,8 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { sidebarSections } from "@/lib/groups";
+import { refreshPullRequests } from "@/lib/actions";
+import { sidebarSections, type SidebarFilter, type SidebarSort } from "@/lib/groups";
 import { ago } from "@/lib/format";
 import { useNow, useTheme } from "@/lib/hooks";
 import { displayTitle, useSolus } from "@/lib/store";
@@ -58,8 +59,11 @@ export function Sidebar() {
   const showMerged = useSolus((s) => s.showMerged);
   const activeId = useSolus((s) => s.activeId);
   const toggleMerged = useSolus((s) => s.toggleMerged);
-  const { pinned: pinnedTasks, workspaces, merged, archived } = sidebarSections(Object.values(tasks), pinned, query ?? "");
+  const view = useSolus((s) => s.sidebarView);
+  const { pinned: pinnedTasks, workspaces, merged, archived } = sidebarSections(Object.values(tasks), pinned, query ?? "", view);
+  usePullRequestHealth();
   const empty = Object.keys(tasks).length === 0;
+  const filtered = !empty && view.filter !== "all" && pinnedTasks.length + workspaces.length + merged.length === 0;
 
   return (
     <nav aria-label="Workspaces" className="flex min-h-0 flex-1 flex-col">
@@ -75,6 +79,14 @@ export function Sidebar() {
             No workspaces yet. Press <kbd className="font-sans font-medium text-foreground">N</kbd> to create one.
           </p>
         )}
+        {filtered && !query && (
+          <p className="px-3 py-2 text-sm text-muted-foreground">
+            Nothing here right now.{" "}
+            <button type="button" onClick={() => useSolus.getState().setSidebarView({ filter: "all" })} className="underline hover:text-foreground">
+              Show all
+            </button>
+          </p>
+        )}
         {query && pinnedTasks.length + workspaces.length + merged.length === 0 && (
           <p className="px-3 py-2 text-sm text-muted-foreground">Nothing matches “{query}”.</p>
         )}
@@ -88,7 +100,7 @@ export function Sidebar() {
         )}
 
         {(workspaces.length > 0 || merged.length > 0) && (
-          <Section label="My workspaces" hint={repo?.name}>
+          <Section label="My workspaces" hint={repo?.name} action={<ViewMenu />}>
             {workspaces.map((t) => (
               <WorkspaceRow key={t.id} task={t} />
             ))}
@@ -224,6 +236,75 @@ function ThemeMenu() {
   );
 }
 
+const FILTER_LABELS: Record<SidebarFilter, string> = { all: "All", attention: "Needs you", working: "Working", review: "Ready for review" };
+const SORT_LABELS: Record<SidebarSort, string> = { attention: "Needs you first", recent: "Last active", created: "Newest" };
+
+function ViewMenu() {
+  const view = useSolus((s) => s.sidebarView);
+  const setView = useSolus((s) => s.setSidebarView);
+  const changed = view.filter !== "all" || view.sort !== "attention";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Filter and sort workspaces"
+        title="Filter and sort"
+        className={cn("rounded p-0.5 hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none", changed && "text-foreground")}
+      >
+        <ListFilter className="size-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel>Show</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={view.filter} onValueChange={(filter) => setView({ filter: filter as SidebarFilter })}>
+          {Object.entries(FILTER_LABELS).map(([value, label]) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={view.sort} onValueChange={(sort) => setView({ sort: sort as SidebarSort })}>
+          {Object.entries(SORT_LABELS).map(([value, label]) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const PR_REFRESH_MS = 90_000;
+
+/** Keeps sidebar PR status current, only while someone can see it. */
+function usePullRequestHealth() {
+  const hasPullRequest = useSolus((s) => Object.values(s.tasks).some((t) => t.pullRequest && t.state !== "merged"));
+  useEffect(() => {
+    if (!hasPullRequest) return;
+    const refresh = () => {
+      if (!document.hidden) void refreshPullRequests();
+    };
+    refresh();
+    const timer = setInterval(refresh, PR_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [hasPullRequest]);
+}
+
+const PR_HEALTH = {
+  passed: { className: "text-state-review", label: "Checks passed" },
+  failed: { className: "text-state-stuck", label: "Checks failed" },
+  pending: { className: "text-muted-foreground", label: "Checks running" },
+  conflict: { className: "text-state-needs-input", label: "Has conflicts" },
+};
+
+function PullRequestBadge({ task }: { task: Task }) {
+  const health = useSolus((s) => s.prHealth[task.id]);
+  if (!task.pullRequest || task.state === "merged") return null;
+  const look = health ? PR_HEALTH[health] : undefined;
+  const label = `Pull request #${task.pullRequest.number}${look ? `: ${look.label}` : ""}`;
+  return <GitPullRequest role="img" aria-label={label} className={cn("size-3.5 shrink-0", look?.className ?? "text-muted-foreground")} />;
+}
+
 function NavItem({
   icon,
   label,
@@ -250,12 +331,13 @@ function NavItem({
   );
 }
 
-function Section({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Section({ label, hint, action, children }: { label: string; hint?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="mb-4">
       <h2 className="flex items-baseline gap-2 px-3 pb-1.5 text-xs text-muted-foreground">
         {label}
         {hint && <span className="truncate opacity-60">{hint}</span>}
+        {action && <span className="ml-auto">{action}</span>}
       </h2>
       <ul className="space-y-px">{children}</ul>
     </section>
@@ -299,6 +381,7 @@ function WorkspaceRow({ task }: { task: Task }) {
         )}
         <span className="sr-only">{STATE_LABELS[task.state]}:</span>
         <span className="min-w-0 flex-1 truncate">{title}</span>
+        <PullRequestBadge task={task} />
         <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums group-hover:invisible">
           {now !== null ? ago(now - task.lastActivityAt) : ""}
         </span>

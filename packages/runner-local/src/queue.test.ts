@@ -154,6 +154,30 @@ describe("chat options", () => {
   });
 });
 
+describe("naming the branch", () => {
+  const branchOf = async (r: LocalRunner, id: string) => (await r.listTasks()).find((t) => t.id === id)?.branch;
+
+  it("renames it once, as a real git branch", async () => {
+    const { r, id, agent } = await started();
+    agent.emit({ type: "branch_name", name: "Fix Login Redirect" });
+    await vi.waitFor(async () => expect(await branchOf(r, id)).toBe("solus/fix-login-redirect"));
+    expect(sh(repo, "branch", "--list", "solus/*")).toContain("solus/fix-login-redirect");
+    agent.emit({ type: "branch_name", name: "Something else" });
+    endTurn(agent);
+    await vi.waitFor(async () => expect(await stateOf(r, id)).toBe("ready_for_review"));
+    expect(await branchOf(r, id)).toBe("solus/fix-login-redirect");
+  });
+
+  it("ignores a name with nothing usable in it", async () => {
+    const { r, id, agent } = await started();
+    const before = await branchOf(r, id);
+    agent.emit({ type: "branch_name", name: "///" });
+    endTurn(agent);
+    await vi.waitFor(async () => expect(await stateOf(r, id)).toBe("ready_for_review"));
+    expect(await branchOf(r, id)).toBe(before);
+  });
+});
+
 it("lists tracked and new files, but not ignored ones", async () => {
   const { r, id } = await started();
   const task = (await r.listTasks()).find((t) => t.id === id);

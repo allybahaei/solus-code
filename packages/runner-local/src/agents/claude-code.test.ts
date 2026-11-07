@@ -145,10 +145,11 @@ describe("ClaudeCodeAdapter", () => {
     expect(events.find((e) => e.type === "error")).toMatchObject({ error: { message: expect.stringContaining("No output") } });
   });
 
-  it("doesn't count waiting for a person as a stall", async () => {
-    run("Go [approve]", { stallMs: 1500 });
+  it("doesn't count waiting for a person as a stall", { timeout: 15_000 }, async () => {
+    // Long enough that a slow machine reaches the approval first, which is what this tests.
+    run("Go [approve]", { stallMs: 4000 });
     await saw("approval");
-    await new Promise((r) => setTimeout(r, 1800));
+    await new Promise((r) => setTimeout(r, 4300));
     expect(events.some((e) => e.type === "error")).toBe(false);
   });
 

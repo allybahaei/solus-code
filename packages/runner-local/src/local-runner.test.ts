@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskState } from "@solus/core";
 import type { AgentAdapter } from "./agents/agent";
@@ -221,6 +222,31 @@ describe("saved state", () => {
     expect((await task(r, t.id))?.error?.message).toMatch(/restarted/);
     await r.sendMessage(t.id, "Carry on");
     await reaches(r, t.id, "ready_for_review");
+  });
+
+  describe("after Solus quit part way through setting up a task", () => {
+    /** Where the runner puts a task's worktree, as it would have been left on disk. */
+    const leftover = (id: string) => {
+      const root = realpathSync(repo);
+      const key = `${slugify(basename(root))}-${createHash("sha256").update(root).digest("hex").slice(0, 8)}`;
+      return join(home, "worktrees", key, id);
+    };
+
+    it("uses the worktree it left behind", async () => {
+      const r = await open();
+      const t = await newTask(r, "Half set up");
+      sh(repo, "worktree", "add", "-q", "-b", t.branch, leftover(t.id), "main");
+      await r.startTask(t.id);
+      await reaches(r, t.id, "ready_for_review");
+    });
+
+    it("uses the branch it left behind", async () => {
+      const r = await open();
+      const t = await newTask(r, "Branch only");
+      sh(repo, "branch", t.branch, "main");
+      await r.startTask(t.id);
+      await reaches(r, t.id, "ready_for_review");
+    });
   });
 
   it("survives a half-written last line", async () => {

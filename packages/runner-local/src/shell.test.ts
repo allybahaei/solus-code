@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeAgent } from "./agents/fake";
 import { LocalRunner } from "./local-runner";
 
@@ -12,6 +12,15 @@ let home: string;
 let runner: LocalRunner | undefined;
 
 const sh = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
+
+// The user's own shell can take seconds to load its startup files, so tests use a plain one.
+const realShell = process.env.SHELL;
+beforeAll(() => {
+  process.env.SHELL = "/bin/sh";
+});
+afterAll(() => {
+  process.env.SHELL = realShell;
+});
 
 beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), "solus-shell-")));

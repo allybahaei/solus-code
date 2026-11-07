@@ -147,6 +147,8 @@ export class LocalRunner implements Runner {
   private readonly records = new Map<string, Rec>();
   private readonly listeners = new Set<(event: RunnerEvent) => void>();
   private nextMessage = 1;
+  /** Set once the repo's lock is released, after which another runner may own the state. */
+  private disposed = false;
   /** Worktrees are created one at a time, since they all write to the same .git. */
   private creating: Promise<unknown> = Promise.resolve();
   /** Merges run one at a time, since they move shared branches. */
@@ -182,6 +184,7 @@ export class LocalRunner implements Runner {
 
   /** Stops every agent. Tasks keep their saved state. */
   dispose(): void {
+    this.disposed = true;
     for (const rec of this.records.values()) {
       rec.abort?.abort();
       this.endSession(rec);
@@ -894,6 +897,8 @@ export class LocalRunner implements Runner {
   }
 
   private save() {
+    // Work still finishing after dispose mustn't overwrite the next runner's state.
+    if (this.disposed) return;
     this.store.saveTasks(
       [...this.records.values()].map(({ task, worktree, setupDone, runs, existingBranch }) => ({
         task,
@@ -1051,10 +1056,18 @@ export class LocalRunner implements Runner {
     if (!rec.worktree) {
       const path = join(this.worktrees, task.id);
       this.term(rec, `\x1b[2mCreating worktree for ${task.branch}…\x1b[0m\r\n`);
-      const create = () =>
-        rec.existingBranch
-          ? addWorktree(this.repo.path, path, task.branch)
-          : createWorktree(this.repo.path, path, task.branch, task.baseBranch);
+      const create = async () => {
+        // An earlier start can stop part way, as when Solus quits mid-setup, leaving these behind.
+        if (existsSync(join(path, ".git"))) return;
+        try {
+          if (rec.existingBranch) await addWorktree(this.repo.path, path, task.branch);
+          else await createWorktree(this.repo.path, path, task.branch, task.baseBranch);
+        } catch (err) {
+          if (existsSync(join(path, ".git"))) return;
+          if (rec.existingBranch || !(await branchExists(this.repo.path, task.branch))) throw err;
+          await addWorktree(this.repo.path, path, task.branch);
+        }
+      };
       const created = this.creating.then(create, create);
       this.creating = created.catch(() => {});
       await created;

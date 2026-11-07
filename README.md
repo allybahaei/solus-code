@@ -42,6 +42,8 @@ To build the Mac app and its `.dmg`, which aren't signed yet, into `packages/des
 pnpm --filter @solus/desktop dist
 ```
 
+Builds need no account unless `SOLUS_SUPABASE_URL` and `SOLUS_SUPABASE_PUBLISHABLE_KEY` are set, and then the app asks for an email sign-in once. The project's Magic Link email template must include `{{ .Token }}`, so it sends a code.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).

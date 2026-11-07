@@ -12,6 +12,10 @@ const webApp = join(here, "../../apps/web");
 const { version, license } = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
 const { dependencies } = JSON.parse(readFileSync(join(here, "../cli/package.json"), "utf8"));
 
+// Both are public. Without them the app needs no account, as for anyone building from source.
+const { SOLUS_SUPABASE_URL: url, SOLUS_SUPABASE_PUBLISHABLE_KEY: key } = process.env;
+const auth = url && key ? { url, key } : null;
+
 rmSync(stage, { recursive: true, force: true });
 rmSync(join(webApp, "out"), { recursive: true, force: true });
 mkdirSync(stage);
@@ -31,6 +35,7 @@ await build({
   target: "node22",
   format: "esm",
   external: ["electron", "node-pty", "ws"],
+  define: { __SOLUS_AUTH__: JSON.stringify(auth) },
 });
 // Agents run this file directly, so it ships beside the bundle.
 cpSync(join(here, "../runner-local/src/agents/mcp-bridge.mjs"), join(stage, "dist/mcp-bridge.mjs"));

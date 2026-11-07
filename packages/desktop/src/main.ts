@@ -2,12 +2,17 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BrowserWindow, Menu, app, dialog, session, shell, type MenuItemConstructorOptions } from "electron";
+import { BrowserWindow, Menu, app, dialog, safeStorage, session, shell, type MenuItemConstructorOptions } from "electron";
 import { startDaemon, type Daemon } from "@solus/daemon";
 import { LocalRunner, adapterFor } from "@solus/runner-local";
+import { AccountClient, SignInError, type Account, type AuthConfig } from "./account";
 import { readRecents, remember, writeRecents, type RecentRepo } from "./recents";
 import { loginShellPath, mergePath } from "./shell-path";
-import { welcomePage } from "./welcome";
+import { clearAccount, loadAccount, saveAccount } from "./session-store";
+import { signInPage, welcomePage, type SignInStep } from "./welcome";
+
+/** Set when building a release. Builds without it need no account. */
+declare const __SOLUS_AUTH__: AuthConfig | null;
 
 /** One open repo: its own runner, daemon and window. */
 interface RepoWindow {
@@ -24,7 +29,13 @@ const open = new Map<string, RepoWindow>();
 let welcome: BrowserWindow | undefined;
 let quitting = false;
 
+const accounts = __SOLUS_AUTH__ ? new AccountClient(__SOLUS_AUTH__) : undefined;
+let account: Account | undefined;
+let signIn: SignInStep = {};
+const needsSignIn = () => accounts !== undefined && account === undefined;
+
 const recentsFile = () => join(app.getPath("userData"), "recents.json");
+const accountFile = () => join(app.getPath("userData"), "account.bin");
 
 function updateRecents(change: (recents: RecentRepo[]) => RecentRepo[]) {
   writeRecents(recentsFile(), change(readRecents(recentsFile())));
@@ -46,6 +57,7 @@ async function startOn(runner: LocalRunner, token: string, port: number | undefi
 }
 
 async function openRepo(chosen: string) {
+  if (needsSignIn()) return showWelcome();
   const already = open.get(chosen);
   if (already) return already.window.focus();
 
@@ -137,7 +149,13 @@ async function confirmStop(entries: RepoWindow[]): Promise<boolean> {
 }
 
 function showWelcome() {
-  if (welcome) return welcome.focus();
+  const window = welcome ?? welcomeWindow();
+  const page = needsSignIn() ? signInPage(signIn) : welcomePage(readRecents(recentsFile()));
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`);
+  window.focus();
+}
+
+function welcomeWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 560,
     height: 520,
@@ -147,20 +165,80 @@ function showWelcome() {
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
   welcome = window;
+  window.on("page-title-updated", (event) => event.preventDefault());
   window.on("closed", () => {
     welcome = undefined;
   });
   window.webContents.on("will-navigate", (event, url) => {
     event.preventDefault();
-    if (url === "solus://open") return void chooseRepo();
-    const index = Number(/^solus:\/\/recent\/(\d+)$/.exec(url)?.[1]);
-    const repo = readRecents(recentsFile())[index];
-    if (repo) void openRepo(repo.path);
+    void followLink(new URL(url));
   });
-  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(welcomePage(readRecents(recentsFile())))}`);
+  return window;
+}
+
+/** Links and forms on the Welcome window, which has no other way to reach here. */
+async function followLink(url: URL) {
+  if (url.protocol !== "solus:") return;
+  if (url.host === "email") return requestCode(url.searchParams.get("email")?.trim() ?? "");
+  if (url.host === "resend") return requestCode(signIn.codeSentTo ?? "");
+  if (url.host === "code") return submitCode(url.searchParams.get("code") ?? "");
+  if (url.host === "change-email") {
+    signIn = { ...(signIn.codeSentTo ? { email: signIn.codeSentTo } : {}) };
+    return showWelcome();
+  }
+  if (url.host === "open") return chooseRepo();
+  const repo = url.host === "recent" ? readRecents(recentsFile())[Number(url.pathname.slice(1))] : undefined;
+  if (repo) await openRepo(repo.path);
+}
+
+function signInFailed(err: unknown, step: SignInStep) {
+  signIn = { ...step, error: err instanceof SignInError ? err.message : "Something went wrong. Try again." };
+  showWelcome();
+}
+
+async function requestCode(email: string) {
+  try {
+    await accounts?.sendCode(email);
+    signIn = { codeSentTo: email };
+    showWelcome();
+  } catch (err) {
+    signInFailed(err, signIn.codeSentTo ? { codeSentTo: signIn.codeSentTo } : { email });
+  }
+}
+
+async function submitCode(code: string) {
+  const email = signIn.codeSentTo;
+  if (!email) return;
+  try {
+    const signedIn = await accounts?.verifyCode(email, code);
+    if (!signedIn) return;
+    account = signedIn;
+    signIn = {};
+    saveAccount(accountFile(), signedIn, safeStorage);
+    buildMenu();
+    await restoreOrWelcome();
+  } catch (err) {
+    signInFailed(err, { codeSentTo: email });
+  }
+}
+
+async function signOut() {
+  const entries = [...open.values()];
+  if (!account || !(await confirmStop(entries))) return;
+  const leaving = account;
+  account = undefined;
+  clearAccount(accountFile());
+  buildMenu();
+  for (const entry of entries) {
+    entry.closing = true;
+    entry.window.close();
+  }
+  if (entries.length === 0) showWelcome();
+  await accounts?.signOut(leaving);
 }
 
 async function chooseRepo() {
+  if (needsSignIn()) return showWelcome();
   const { canceled, filePaths } = await dialog.showOpenDialog({
     message: "Choose a git repository",
     buttonLabel: "Open",
@@ -168,6 +246,15 @@ async function chooseRepo() {
   });
   const [path] = filePaths;
   if (!canceled && path) await openRepo(path);
+}
+
+function accountMenu(): MenuItemConstructorOptions[] {
+  if (!account) return [];
+  return [
+    { label: `Signed in as ${account.email}`, enabled: false },
+    { label: "Sign Out", click: () => void signOut() },
+    { type: "separator" },
+  ];
 }
 
 function buildMenu() {
@@ -192,6 +279,7 @@ function buildMenu() {
             ],
           },
           { type: "separator" },
+          ...accountMenu(),
           { role: "close" },
         ],
       },
@@ -203,6 +291,7 @@ function buildMenu() {
 }
 
 async function restoreOrWelcome() {
+  if (needsSignIn()) return showWelcome();
   for (const repo of readRecents(recentsFile()).filter((r) => r.open)) await openRepo(repo.path);
   if (open.size === 0) showWelcome();
 }
@@ -236,6 +325,7 @@ async function main() {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, allow) => {
     allow(permission === "clipboard-sanitized-write");
   });
+  if (accounts) account = loadAccount(accountFile(), safeStorage);
   buildMenu();
   await restoreOrWelcome();
 }

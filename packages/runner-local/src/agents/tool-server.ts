@@ -8,6 +8,14 @@ import { fileURLToPath } from "node:url";
 /** The MCP server an agent starts, which forwards tool calls to this ToolServer. */
 export const BRIDGE = fileURLToPath(new URL("./mcp-bridge.mjs", import.meta.url));
 
+/**
+ * Agents start the bridge with process.execPath. Inside the Mac app that is the
+ * app itself, which only behaves as plain Node with this set.
+ */
+export function bridgeEnv(versions: NodeJS.ProcessVersions = process.versions): Record<string, string> {
+  return versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {};
+}
+
 const ASK_REPLY = "Your question is on the person's screen. End your turn now; their answer arrives as your next message.";
 
 export interface ToolHandlers {

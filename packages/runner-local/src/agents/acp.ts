@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import { createInterface } from "node:readline";
 import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
-import { BRIDGE, ToolServer } from "./tool-server";
+import { BRIDGE, bridgeEnv, ToolServer } from "./tool-server";
 
 export interface AcpOptions {
   /** Shown in errors, such as "OpenCode". */
@@ -161,7 +161,10 @@ class AcpSession implements AgentSession {
         name: "solus",
         command: process.execPath,
         args: [BRIDGE],
-        env: [{ name: "SOLUS_SOCKET", value: this.tools.socketPath }],
+        env: [
+          ...Object.entries(bridgeEnv()).map(([name, value]) => ({ name, value })),
+          { name: "SOLUS_SOCKET", value: this.tools.socketPath },
+        ],
       },
     ];
     const { cwd, session, prompt } = this.start;

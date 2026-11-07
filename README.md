@@ -17,6 +17,7 @@ pnpm lint && pnpm typecheck && pnpm test
 - `packages/runner-local`: the real Runner: git worktrees, real diffs, saved state in `~/.solus`
 - `packages/daemon`: local server exposing a Runner over WebSocket (127.0.0.1, token required)
 - `packages/cli`: the `solus-code` command, which bundles all of this with the built UI
+- `packages/desktop`: the Mac app, which runs the same daemon and UI in Electron, with a window per repo
 - `packages/runner-client`: the browser's `RemoteRunner`, which talks to the daemon
 
 ## Using it
@@ -33,6 +34,12 @@ Not on npm yet. To build the package from this repo:
 
 ```bash
 pnpm package
+```
+
+To build the Mac app, which isn't signed yet, into `packages/desktop/release`:
+
+```bash
+pnpm --filter @solus/desktop dist
 ```
 
 ## Contributing

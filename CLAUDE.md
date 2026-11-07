@@ -4,7 +4,7 @@ App name: **Solus**.
 
 ## What we're building
 
-A web app for running several coding agents (Claude Code and Codex in the MVP) in parallel on one repo. Each task gets its own isolated workspace (git worktree + branch), and the user supervises, reviews and merges from one calm, fast UI.
+A Mac app for running several coding agents (Claude Code and Codex in the MVP) in parallel on one repo. Local use is free. A paid cloud tier that runs agents remotely comes later. Each task gets its own isolated workspace (git worktree + branch), and the user supervises, reviews and merges from one calm, fast UI.
 
 **Bring your own subscription.** Solus never calls a model itself. It runs the official `claude` and `codex` tools on the user's machine, on the login they already have, so usage counts against their own plan or API key. Solus has no model billing and no account in the middle. Never read, copy or proxy their login tokens. Warn when an environment variable such as `ANTHROPIC_API_KEY` would switch someone from their subscription to API billing. Check each provider's terms before running a subscription login on a remote sandbox.
 
@@ -100,6 +100,7 @@ packages/
   daemon/           # local server: exposes a Runner over WebSocket, the app's backend
   runner-client/    # RemoteRunner: the browser's Runner, connected to the daemon
   cli/              # solus-code: the published command, daemon + built UI on one port
+  desktop/          # the Mac app: Electron, one window, runner and daemon per repo
 ```
 
 ## The Runner interface

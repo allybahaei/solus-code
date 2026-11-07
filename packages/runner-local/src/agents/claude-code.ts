@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
 import { ClaudeStream, summarizeTool, type ClaudeLine } from "./claude-stream";
-import { BRIDGE, ToolServer } from "./tool-server";
+import { BRIDGE, bridgeEnv, ToolServer } from "./tool-server";
 
 export interface ClaudeCodeOptions {
   /** The executable. Tests point this at a stand-in. */
@@ -154,7 +154,7 @@ class ClaudeSession implements AgentSession {
       mcpConfig,
       JSON.stringify({
         mcpServers: {
-          solus: { command: process.execPath, args: [BRIDGE], env: { SOLUS_SOCKET: tools.socketPath } },
+          solus: { command: process.execPath, args: [BRIDGE], env: { ...bridgeEnv(), SOLUS_SOCKET: tools.socketPath } },
         },
       }),
     );

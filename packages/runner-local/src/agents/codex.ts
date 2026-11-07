@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
 import { CodexStream, type CodexLine } from "./codex-stream";
-import { BRIDGE, ToolServer } from "./tool-server";
+import { BRIDGE, bridgeEnv, ToolServer } from "./tool-server";
 
 export interface CodexOptions {
   /** The executable. Tests point this at a stand-in. */
@@ -88,6 +88,7 @@ class CodexSession implements AgentSession {
       `mcp_servers.solus.command=${toml(process.execPath)}`,
       `mcp_servers.solus.args=[${toml(BRIDGE)}]`,
       `mcp_servers.solus.env.SOLUS_SOCKET=${toml(this.tools.socketPath)}`,
+      ...Object.entries(bridgeEnv()).map(([name, value]) => `mcp_servers.solus.env.${name}=${toml(value)}`),
       `mcp_servers.solus.default_tools_approval_mode=${toml("approve")}`,
     ].flatMap((c) => ["-c", c]);
     return this.thread

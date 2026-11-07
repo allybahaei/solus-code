@@ -5,9 +5,6 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 
 The Solus name and logo are not covered by that licence.
 
-The solus-code package installs Codex (https://github.com/openai/codex) from
-npm as a dependency, under the Apache License, Version 2.0. Copyright OpenAI.
-
 This product includes agent logos in apps/web/public/agents from lobe-icons
 (https://github.com/lobehub/lobe-icons), under the MIT License. See the README
 in that folder. Those marks belong to their respective owners, and their use

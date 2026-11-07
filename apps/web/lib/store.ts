@@ -45,6 +45,7 @@ interface SolusState {
   closedChats: Record<string, string[]>;
   /** Whether the changes/terminal pane is shown on wide screens. */
   rightPaneOpen: boolean;
+  sidebarOpen: boolean;
 
   open: (id: string) => void;
   openChat: (taskId: string, chatId: string) => void;
@@ -60,6 +61,7 @@ interface SolusState {
   setQuery: (query: string | null) => void;
   rename: (id: string, title: string) => void;
   toggleRightPane: () => void;
+  toggleSidebar: () => void;
 }
 
 const RENAMES_KEY = "solus.renames";
@@ -163,6 +165,7 @@ export const useSolus = create<SolusState>()((set, get) => ({
   activeChat: {},
   closedChats: {},
   rightPaneOpen: true,
+  sidebarOpen: true,
 
   open: (id) =>
     set((s) => ({
@@ -231,6 +234,7 @@ export const useSolus = create<SolusState>()((set, get) => ({
       return { renames };
     }),
   toggleRightPane: () => set((s) => ({ rightPaneOpen: !s.rightPaneOpen })),
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 }));
 
 /** A runner reached over a connection that can drop, such as RemoteRunner. */

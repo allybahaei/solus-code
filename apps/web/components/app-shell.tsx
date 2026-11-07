@@ -29,6 +29,8 @@ export function AppShell() {
   const showList = useSolus((s) => s.showList);
   const wide = useMediaQuery("(min-width: 1024px)");
   const rightPaneOpen = useSolus((s) => s.rightPaneOpen);
+  const sidebarOpen = useSolus((s) => s.sidebarOpen);
+  const hasTask = useSolus((s) => s.activeId !== null);
 
   useEffect(() => connectRunner(getRunner(), getConnection()), []);
   useEffect(() => loadReviewPrefs(), []);
@@ -38,8 +40,9 @@ export function AppShell() {
     <div className="flex h-dvh min-h-0 w-full overflow-hidden">
       <aside
         className={cn(
-          "min-h-0 w-full flex-col border-r bg-card md:flex md:w-72 md:shrink-0",
+          "min-h-0 w-full flex-col border-r bg-card md:w-72 md:shrink-0",
           showList ? "flex" : "hidden",
+          sidebarOpen ? "md:flex" : "md:hidden",
         )}
       >
         <Sidebar />
@@ -49,7 +52,7 @@ export function AppShell() {
         <TabBar />
         <ActiveTask wide={wide} />
       </main>
-      {wide && rightPaneOpen && <RightPane />}
+      {wide && rightPaneOpen && hasTask && <RightPane />}
       <NewTaskDialog />
       <MergeDialog />
       <Notice />
@@ -197,6 +200,11 @@ function Notice() {
 function useKeyboard() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === "b") {
+        e.preventDefault();
+        useSolus.getState().toggleSidebar();
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return;

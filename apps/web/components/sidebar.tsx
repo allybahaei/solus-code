@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowRight, House, Monitor, Moon, Pin, PinOff, Plus, Search, Sun, X } from "lucide-react";
+import { ArrowRight, House, Monitor, Moon, PanelLeft, Pin, PinOff, Plus, Search, Sun, X } from "lucide-react";
 import { STATE_LABELS, isAttention, type Task, type TaskState } from "@solus/core";
 import {
   DropdownMenu,
@@ -30,6 +30,25 @@ const BAR: Record<TaskState, string> = {
 
 export const SEARCH_ID = "sidebar-search";
 
+/** Shows or hides the sidebar. In the Mac app it sits beside the window buttons. */
+export function SidebarToggle() {
+  const open = useSolus((s) => s.sidebarOpen);
+  const toggle = useSolus((s) => s.toggleSidebar);
+  const label = `${open ? "Hide" : "Show"} sidebar (⌘B)`;
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={open}
+      aria-label={label}
+      title={label}
+      className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[18px]"
+    >
+      <PanelLeft />
+    </button>
+  );
+}
+
 export function Sidebar() {
   const tasks = useSolus((s) => s.tasks);
   const repo = useSolus((s) => s.repo);
@@ -44,6 +63,9 @@ export function Sidebar() {
 
   return (
     <nav aria-label="Workspaces" className="flex min-h-0 flex-1 flex-col">
+      <div data-titlebar className="hidden h-12 shrink-0 items-center pl-20 desktop:flex">
+        <SidebarToggle />
+      </div>
       <TopNav />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-4">
@@ -120,7 +142,7 @@ function TopNav() {
   }, [searching]);
 
   return (
-    <div className="border-b px-2 pt-3 pb-2">
+    <div className="border-b px-2 pt-3 pb-2 desktop:pt-0">
       <div className="flex items-center gap-2 px-3 pb-2">
         <span
           aria-hidden

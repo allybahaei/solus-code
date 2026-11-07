@@ -6,6 +6,7 @@
  * Theme: follows the OS by default. Put .light or .dark on <html> to force one.
  * Every colour is a token below; components never use raw colours.
  */
+@custom-variant desktop (&:where(.desktop, .desktop *));
 @custom-variant dark {
   @media (prefers-color-scheme: dark) {
     &:not(:where(.light, .light *)) {
@@ -163,5 +164,14 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* In the Mac app the top bars are the title bar, so their empty space drags the window. */
+  .desktop [data-titlebar] {
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .desktop [data-titlebar] :is(button, a, input, [role="tab"]),
+  .desktop :is([role="dialog"], [role="menu"]) {
+    -webkit-app-region: no-drag;
   }
 }

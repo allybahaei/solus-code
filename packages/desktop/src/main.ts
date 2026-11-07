@@ -25,6 +25,8 @@ interface RepoWindow {
 }
 
 const BACKGROUND = "#1f1d1b";
+/** No title bar: the page's top bars run behind the window buttons, centred on them. */
+const TITLE_BAR = { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 19, y: 19 } } as const;
 /** Fixed, because Supabase only returns to addresses on its allow list. */
 const CALLBACK_PORT = 47831;
 const staticDir = fileURLToPath(new URL("../web", import.meta.url));
@@ -93,6 +95,7 @@ function repoWindow(path: string, runner: LocalRunner, daemon: Daemon, origin: s
     minHeight: 600,
     title: basename(path),
     backgroundColor: BACKGROUND,
+    ...TITLE_BAR,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
   const entry: RepoWindow = { path, runner, daemon, window, closing: false };
@@ -166,6 +169,7 @@ function welcomeWindow(): BrowserWindow {
     resizable: false,
     title: "Solus",
     backgroundColor: BACKGROUND,
+    ...TITLE_BAR,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
   welcome = window;

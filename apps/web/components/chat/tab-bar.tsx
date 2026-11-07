@@ -5,6 +5,7 @@ import { Archive, AudioLines, ChevronLeft, History, Link2, PanelRight, Pencil, P
 import { chatsOf, type Chat, type Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { DeleteTask } from "@/components/chat/task-bar";
+import { SidebarToggle } from "@/components/sidebar";
 import { StateDot } from "@/components/state-dot";
 import {
   DropdownMenu,
@@ -26,10 +27,16 @@ export function TabBar() {
   const tasks = useSolus((s) => s.tasks);
   const repo = useSolus((s) => s.repo);
   const setShowList = useSolus((s) => s.setShowList);
+  const sidebarOpen = useSolus((s) => s.sidebarOpen);
   const anyWorking = Object.values(tasks).some((t) => t.state === "working");
 
   return (
-    <div className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2">
+    <div data-titlebar className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2">
+      {!sidebarOpen && (
+        <div className="hidden items-center pl-2 md:flex desktop:pl-20">
+          <SidebarToggle />
+        </div>
+      )}
       <button
         type="button"
         className={cn(iconButton, "my-auto ml-1 md:hidden")}
@@ -56,7 +63,7 @@ export function TabBar() {
         {task && <ArchiveButton task={task} />}
         {task && <DeleteTask key={task.id} task={task} className={iconButton} />}
         {task && <AgentStack task={task} />}
-        <PaneToggle />
+        {task && <PaneToggle />}
       </div>
     </div>
   );

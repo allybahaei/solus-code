@@ -12,6 +12,8 @@ const HEAD = `<!doctype html><html><head><meta charset="utf-8"><title>Solus</tit
   --muted: light-dark(oklch(0.52 0.008 75), oklch(0.68 0.008 80));
   --line: light-dark(oklch(0.91 0.005 85), oklch(1 0.01 85 / 7%)); }
 * { box-sizing: border-box; }
+html { -webkit-app-region: drag; }
+a { -webkit-app-region: no-drag; }
 body { margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
   background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, system-ui, sans-serif; -webkit-user-select: none; }
 main { width: 400px; max-width: calc(100vw - 32px); }

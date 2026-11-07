@@ -18,7 +18,7 @@ import { MergeDialog } from "@/components/review/merge-dialog";
 import { ChecksView } from "@/components/checks/checks-view";
 import { MAIN_CHAT } from "@solus/core";
 import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/review-view";
-import { loadSettings, openInEditor, startTask } from "@/lib/actions";
+import { openInEditor, startTask } from "@/lib/actions";
 import { loadReviewPrefs, reviewOf, useReview } from "@/lib/review-store";
 import { useMediaQuery } from "@/lib/hooks";
 import { getConnection, getRunner } from "@/lib/runner";
@@ -37,7 +37,6 @@ export function AppShell() {
 
   useEffect(() => connectRunner(getRunner(), getConnection()), []);
   useEffect(() => loadReviewPrefs(), []);
-  useEffect(() => void loadSettings(), []);
   useKeyboard();
   useTaskLinks();
 

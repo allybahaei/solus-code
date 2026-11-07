@@ -16,6 +16,7 @@ export const RUNNER_METHODS = [
   "listSources",
   "createChat",
   "installAgent",
+  "openSignIn",
   "getPullRequest",
   "pushPullRequest",
   "mergePullRequest",

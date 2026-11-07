@@ -97,6 +97,8 @@ export interface Runner {
   snapshot(): Promise<RunnerSnapshot>;
   /** Checks installs and logins. Costs no agent usage. */
   checkSetup(): Promise<SetupStatus>;
+  /** Opens a terminal running an agent's or tool's own sign-in, by its setup check id. */
+  openSignIn(check: string): Promise<void>;
   /** Installs an agent's official package, on the user's say-so. Resolves with fresh checks. */
   installAgent(agent: AgentKind): Promise<SetupStatus>;
   listTasks(): Promise<Task[]>;

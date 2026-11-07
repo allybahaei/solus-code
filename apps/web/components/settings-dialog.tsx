@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { loadOpenTargets, saveSettings } from "@/lib/actions";
+import { desktop, reportProblem } from "@/lib/desktop";
 import { useTheme } from "@/lib/hooks";
 import { useSolus } from "@/lib/store";
 import { setTheme, type Theme } from "@/lib/theme";
@@ -44,6 +45,22 @@ function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange:
   );
 }
 
+/** Proves notifications reach the person, since macOS can turn them off. */
+function TestNotification() {
+  const [result, setResult] = useState<string | null>(null);
+  return (
+    <Row label="Test notification" hint={result ?? "If nothing appears, allow Solus in System Settings › Notifications."}>
+      <button
+        type="button"
+        onClick={() => void desktop()?.testNotification().then((ok) => setResult(ok ? "Sent. Did it appear?" : "This Mac doesn't support notifications."))}
+        className="rounded-md border px-2.5 py-1 text-xs hover:bg-accent"
+      >
+        Send one
+      </button>
+    </Row>
+  );
+}
+
 export function SettingsDialog() {
   const open = useSolus((s) => s.overlay === "settings");
   const setOverlay = useSolus((s) => s.setOverlay);
@@ -80,6 +97,7 @@ export function SettingsDialog() {
           <Row label="Notifications" hint="In the Mac app, when a task needs you and Solus isn't in front.">
             <Toggle label="Notifications" on={settings.notifications} onChange={(notifications) => void saveSettings({ notifications })} />
           </Row>
+          {desktop() && <TestNotification />}
           <Row label="Sound" hint="Plays with the notification.">
             <Toggle label="Sound" on={settings.sound} onChange={(sound) => void saveSettings({ sound })} />
           </Row>
@@ -99,6 +117,19 @@ export function SettingsDialog() {
               </select>
             </Row>
           )}
+        </div>
+        <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+          <span>Solus {desktop()?.version ?? "in the browser"}</span>
+          <span className="flex gap-3">
+            {desktop() && (
+              <button type="button" onClick={() => void desktop()?.checkForUpdates()} className="underline underline-offset-2 hover:text-foreground">
+                Check for updates
+              </button>
+            )}
+            <button type="button" onClick={reportProblem} className="underline underline-offset-2 hover:text-foreground">
+              Report a problem
+            </button>
+          </span>
         </div>
       </DialogContent>
     </Dialog>

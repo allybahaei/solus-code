@@ -33,6 +33,8 @@ export async function installAgent(agent: AgentKind) {
   if (setup) useSolus.setState({ setup });
 }
 
+export const openSignIn = (check: string) => attempt(() => getRunner().openSignIn(check));
+
 export async function recheckSetup() {
   const setup = await attempt(() => getRunner().checkSetup());
   if (setup) useSolus.setState({ setup });
@@ -130,11 +132,6 @@ export async function loadModels(agent: AgentKind) {
 
 export const setChatOptions = (id: string, options: ChatOptions, chat: string) => attempt(() => getRunner().setChatOptions(id, options, chat));
 export const editQueued = (id: string, queuedId: string, text: string, chat: string) => attempt(() => getRunner().editQueued(id, queuedId, text, chat));
-
-export async function loadSettings() {
-  const settings = await attempt(() => getRunner().getSettings());
-  if (settings) useSolus.setState({ settings });
-}
 
 export async function saveSettings(changes: Partial<Settings>) {
   useSolus.setState((s) => ({ settings: { ...s.settings, ...changes } }));

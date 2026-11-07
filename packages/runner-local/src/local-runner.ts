@@ -51,6 +51,7 @@ import {
 } from "./merge";
 import { listOpenTargets, openFolder } from "./open";
 import { readSettings, writeSettings } from "./settings";
+import { openSignIn } from "./sign-in";
 import { checkSetup, installAgent, type SetupCommands } from "./setup";
 import { mergePullRequest, readCheckLog, readPullRequest } from "./pull-request";
 import { ghJson, listSources, resolveSource } from "./source";
@@ -211,6 +212,10 @@ export class LocalRunner implements Runner {
 
   checkSetup(): Promise<SetupStatus> {
     return checkSetup(this.commands);
+  }
+
+  openSignIn(check: string): Promise<void> {
+    return openSignIn(check, this.commands);
   }
 
   async installAgent(agent: AgentKind): Promise<SetupStatus> {

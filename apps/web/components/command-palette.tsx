@@ -7,6 +7,7 @@ import { StateDot } from "@/components/state-dot";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { archiveTask, loadOpenTargets, newChat, openWorkspace, startTask, stopTask } from "@/lib/actions";
 import { matchScore } from "@/lib/composer";
+import { reportProblem } from "@/lib/desktop";
 import { useReview } from "@/lib/review-store";
 import { displayTitle, useSolus } from "@/lib/store";
 import { SHORTCUTS } from "@/lib/shortcuts";
@@ -53,6 +54,7 @@ function useCommands(): Command[] {
       { id: "pane", label: "Show or hide changes and terminal", run: s.toggleRightPane },
       { id: "settings", label: "Settings", hint: "⌘,", run: () => s.setOverlay("settings") },
       { id: "keys", label: "Keyboard shortcuts", hint: "?", run: () => s.setOverlay("shortcuts") },
+      { id: "report", label: "Report a problem", run: reportProblem },
     );
     for (const t of Object.values(tasks)) {
       list.push({

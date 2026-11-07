@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Check, Copy, SquareTerminal } from "lucide-react";
 import { isAttention, type AgentKind, type Task } from "@solus/core";
 import { StateLabel } from "@/components/state-dot";
 import { Button } from "@/components/ui/button";
-import { installAgent, recheckSetup } from "@/lib/actions";
+import { installAgent, openSignIn, recheckSetup } from "@/lib/actions";
 import { sidebarSections } from "@/lib/groups";
 import { useSolus } from "@/lib/store";
 
@@ -54,12 +55,30 @@ const STATE_TEXT = { missing: "Not installed", signed_out: "Not signed in", prob
 /** Shown only when something isn't ready, with the command that fixes it. */
 function SetupNotice() {
   const setup = useSolus((s) => s.setup);
+  const pending = !!setup && [...setup.agents, ...setup.tools].some((c) => c.state !== "ready");
+  // Sign-ins finish elsewhere, so look again when the person comes back.
+  useEffect(() => {
+    if (!pending) return;
+    let last = 0;
+    const onReturn = () => {
+      if (document.hidden || Date.now() - last < 3000) return;
+      last = Date.now();
+      void recheckSetup();
+    };
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, [pending]);
   if (!setup) return null;
   const checks = [...setup.agents, ...setup.tools];
   const problems = checks.filter((c) => c.state !== "ready");
   if (problems.length === 0) return null;
   const noAgent = setup.agents.every((a) => a.state !== "ready");
   const installable = new Map(setup.agents.filter((a) => a.installable).map((a) => [a.id, a.agent]));
+  const signsIn = (id: string) => ["claude-code", "codex", "cursor", "gh"].includes(id);
 
   return (
     <section className="mt-8" aria-label="Setup">
@@ -74,8 +93,16 @@ function SetupNotice() {
               <span className="text-xs text-state-needs-input">{STATE_TEXT[c.state]}</span>
             </div>
             {c.detail && <p className="mt-0.5 text-xs text-muted-foreground">{c.detail}</p>}
-            {c.fix && <code className="mt-1.5 block font-mono text-xs break-all">{c.fix}</code>}
-            {installable.get(c.id) && <InstallButton agent={installable.get(c.id) as AgentKind} command={c.fix ?? ""} />}
+            {c.fix && <FixCommand text={c.fix} />}
+            <div className="flex gap-2">
+              {c.state === "signed_out" && signsIn(c.id) && (
+                <Button size="xs" className="mt-2" onClick={() => void openSignIn(c.id)} title={`Opens Terminal and runs ${c.fix ?? "the sign-in"}`}>
+                  <SquareTerminal />
+                  Sign in
+                </Button>
+              )}
+              {installable.get(c.id) && <InstallButton agent={installable.get(c.id) as AgentKind} command={c.fix ?? ""} />}
+            </div>
           </li>
         ))}
       </ul>
@@ -87,6 +114,33 @@ function SetupNotice() {
         Check again
       </button>
     </section>
+  );
+}
+
+/** The fix as text, with a copy button for running it by hand. */
+function FixCommand({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const command = /^[a-z][\w./-]* /i.test(text);
+  return (
+    <div className="mt-1.5 flex items-start gap-2">
+      <code className="min-w-0 flex-1 font-mono text-xs break-all">{text}</code>
+      {command && (
+        <button
+          type="button"
+          aria-label={copied ? "Copied" : `Copy ${text}`}
+          title={copied ? "Copied" : "Copy"}
+          onClick={() =>
+            void navigator.clipboard.writeText(text).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            })
+          }
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+        </button>
+      )}
+    </div>
   );
 }
 

@@ -2,13 +2,14 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BrowserWindow, Menu, Notification, app, dialog, safeStorage, session, shell, type MenuItemConstructorOptions } from "electron";
+import { BrowserWindow, Menu, Notification, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import { startDaemon, type Daemon } from "@solus/daemon";
 import { LocalRunner, adapterFor } from "@solus/runner-local";
-import type { Task } from "@solus/core";
+import { problemReportUrl, type Task } from "@solus/core";
 import { AccountClient, SignInCancelled, SignInError, pkcePair, type Account, type AuthConfig } from "./account";
 import { listenForCode, type PendingCallback } from "./callback";
 import { alertFor, attentionCount } from "./alerts";
+import { isNewer, latestRelease } from "./updates";
 import { readRecents, remember, writeRecents, type RecentRepo } from "./recents";
 import { loginShellPath, mergePath } from "./shell-path";
 import { clearAccount, loadAccount, saveAccount } from "./session-store";
@@ -103,7 +104,13 @@ function repoWindow(path: string, runner: LocalRunner, daemon: Daemon, origin: s
     title: basename(path),
     backgroundColor: BACKGROUND,
     ...TITLE_BAR,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: fileURLToPath(new URL("./preload.cjs", import.meta.url)),
+      additionalArguments: [`--solus-version=${app.getVersion()}`, `--solus-platform=${platformName()}`],
+    },
   });
   const entry: RepoWindow = { path, runner, daemon, window, closing: false };
 
@@ -156,6 +163,43 @@ async function updateBadge() {
   const tasks = await Promise.all([...open.values()].map((entry) => entry.runner.listTasks()));
   const count = attentionCount(tasks.flat());
   app.dock?.setBadge(count > 0 ? String(count) : "");
+}
+
+const UPDATE_EVERY_MS = 6 * 60 * 60_000;
+
+/** "macOS 26.4.0 (arm64)". Asked of the system: Darwin's numbering doesn't map onto macOS's. */
+function platformName(): string {
+  return process.platform === "darwin" ? `macOS ${process.getSystemVersion()} (${process.arch})` : `${process.platform} (${process.arch})`;
+}
+
+function reportProblem() {
+  void shell.openExternal(problemReportUrl({ version: app.getVersion(), platform: platformName() }));
+}
+
+/** Tells the person when a newer Solus is out. Installing it themselves until updates can be signed. */
+async function checkForUpdates(manual: boolean) {
+  try {
+    const latest = await latestRelease();
+    if (latest && isNewer(app.getVersion(), latest.version)) {
+      const { response } = await dialog.showMessageBox({
+        message: `Solus ${latest.version} is available`,
+        detail: `You have ${app.getVersion()}. Download the new version, then replace this one in Applications.`,
+        buttons: ["Download", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (response === 0) void shell.openExternal(latest.url);
+    } else if (manual) {
+      await dialog.showMessageBox({ message: "Solus is up to date", detail: `You have ${app.getVersion()}.` });
+    }
+  } catch (err) {
+    if (manual) dialog.showErrorBox("Couldn't check for updates", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** Only Solus's own repo windows may ask the app for anything. */
+function fromRepoWindow(event: IpcMainInvokeEvent): boolean {
+  return [...open.values()].some((entry) => entry.window.webContents === event.sender);
 }
 
 function stop(entry: RepoWindow) {
@@ -330,6 +374,13 @@ function buildMenu() {
       { role: "editMenu" },
       { role: "viewMenu" },
       { role: "windowMenu" },
+      {
+        role: "help",
+        submenu: [
+          { label: "Report a Problem…", click: reportProblem },
+          { label: "Check for Updates…", click: () => void checkForUpdates(true) },
+        ],
+      },
     ]),
   );
 }
@@ -370,8 +421,20 @@ async function main() {
     allow(permission === "clipboard-sanitized-write");
   });
   if (accounts) account = loadAccount(accountFile(), safeStorage);
+  ipcMain.handle("solus:test-notification", (event) => {
+    if (!fromRepoWindow(event) || !Notification.isSupported()) return false;
+    new Notification({ title: "Notifications are on", body: "Solus will tell you here when a task needs you.", sound: "Glass" }).show();
+    return true;
+  });
+  ipcMain.handle("solus:check-updates", (event) => {
+    if (fromRepoWindow(event)) return checkForUpdates(true);
+  });
   buildMenu();
   await restoreOrWelcome();
+  if (app.isPackaged) {
+    setTimeout(() => void checkForUpdates(false), 15_000);
+    setInterval(() => void checkForUpdates(false), UPDATE_EVERY_MS);
+  }
 }
 
 void main();

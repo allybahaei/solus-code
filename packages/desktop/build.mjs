@@ -42,6 +42,16 @@ await build({
   external: ["electron", "node-pty", "ws"],
   define: { __SOLUS_AUTH__: JSON.stringify(auth) },
 });
+// Sandboxed pages only run CommonJS preloads.
+await build({
+  entryPoints: [join(here, "src/preload.ts")],
+  outfile: join(stage, "dist/preload.cjs"),
+  bundle: true,
+  platform: "node",
+  target: "node22",
+  format: "cjs",
+  external: ["electron"],
+});
 // Agents run this file directly, so it ships beside the bundle.
 cpSync(join(here, "../runner-local/src/agents/mcp-bridge.mjs"), join(stage, "dist/mcp-bridge.mjs"));
 

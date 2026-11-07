@@ -329,8 +329,8 @@ export function connectRunner(runner: Runner, connection?: ConnectionSource): ()
     runner
       .snapshot()
       .then(applySnapshot)
-      .then(() => runner.checkSetup())
-      .then((setup) => set({ setup }))
+      .then(() => Promise.all([runner.checkSetup(), runner.getSettings()]))
+      .then(([setup, settings]) => set({ setup, settings }))
       .catch((err: unknown) => {
         set({ status: "error", error: err instanceof Error ? err.message : String(err) });
       });

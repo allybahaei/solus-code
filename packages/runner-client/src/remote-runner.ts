@@ -113,6 +113,7 @@ export class RemoteRunner implements Runner {
   restoreCheckpoint = (id: string, messageId: string) => this.run("restoreCheckpoint", id, messageId);
   readFile = (id: string, path: string) => this.call<string>("readFile", id, path);
   writeFile = (id: string, path: string, content: string) => this.run("writeFile", id, path, content);
+  openSignIn = (check: string) => this.run("openSignIn", check);
   listFiles = (id: string) => this.call<string[]>("listFiles", id);
   listModels = (agent: AgentKind) => this.call<ModelOption[]>("listModels", agent);
   setChatOptions = (id: string, options: ChatOptions, chat?: string) => this.run("setChatOptions", id, options, chat);

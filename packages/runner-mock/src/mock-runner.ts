@@ -281,6 +281,8 @@ export class MockRunner implements Runner {
 
   async writeFile(): Promise<void> {}
 
+  async openSignIn(): Promise<void> {}
+
   async listFiles(id: string): Promise<string[]> {
     return [...this.get(id).files.keys()];
   }

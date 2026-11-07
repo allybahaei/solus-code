@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { AgentMessage, Task } from "@solus/core";
 import { Markdown } from "@/components/markdown";
+import { useTypedText } from "@/lib/typewriter";
 import { cn } from "@/lib/utils";
 
 type Item = { kind: "message"; message: AgentMessage } | { kind: "tools"; id: string; calls: AgentMessage[] };
@@ -26,6 +27,8 @@ function toItems(messages: AgentMessage[]): Item[] {
 export function Transcript({ task, messages, newChat = false }: { task: Task; messages: AgentMessage[]; newChat?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  // Messages already here when the chat opens are history, so they don't replay.
+  const [history] = useState(() => new Set(messages.map((m) => m.id)));
   const items = toItems(messages);
   const lastText = messages.at(-1)?.text.length ?? 0;
 
@@ -40,6 +43,11 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [task.id]);
+
+  const followTyping = () => {
+    const el = scrollRef.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  };
 
   return (
     <div
@@ -73,9 +81,12 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
               </div>
             </div>
           ) : (
-            <div key={item.message.id}>
-              <Markdown text={item.message.text} />
-            </div>
+            <AgentText
+              key={item.message.id}
+              text={item.message.text}
+              fromStart={!history.has(item.message.id)}
+              onType={followTyping}
+            />
           ),
         )}
         {task.state === "working" && (
@@ -87,6 +98,10 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
       </div>
     </div>
   );
+}
+
+function AgentText({ text, fromStart, onType }: { text: string; fromStart: boolean; onType: () => void }) {
+  return <Markdown text={useTypedText(text, fromStart, onType)} />;
 }
 
 function ToolGroup({ calls, live }: { calls: AgentMessage[]; live: boolean }) {

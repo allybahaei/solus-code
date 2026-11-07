@@ -117,7 +117,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
           <ReviewView key={task.id} task={task} files={files} narrow={false} />
         ) : (
           <>
-            <Transcript key={chatId} task={inChat} messages={messages} newChat={chatId !== MAIN_CHAT} />
+            <Transcript key={`transcript/${task.id}/${chatId}`} task={inChat} messages={messages} newChat={chatId !== MAIN_CHAT} />
             <Composer key={`${task.id}/${chatId}`} task={inChat} chatId={chatId} />
           </>
         ))}

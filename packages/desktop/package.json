@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dist": "node build.mjs && electron-builder --mac dir",
+    "dist": "node build.mjs && electron-builder --mac dmg",
     "lint": "eslint src build.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
@@ -31,7 +31,12 @@
     },
     "mac": {
       "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png",
       "identity": null
+    },
+    "dmg": {
+      "title": "Solus",
+      "artifactName": "Solus-${version}-${arch}.${ext}"
     }
   }
 }

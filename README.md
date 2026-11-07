@@ -36,7 +36,7 @@ Not on npm yet. To build the package from this repo:
 pnpm package
 ```
 
-To build the Mac app, which isn't signed yet, into `packages/desktop/release`:
+To build the Mac app and its `.dmg`, which aren't signed yet, into `packages/desktop/release`:
 
 ```bash
 pnpm --filter @solus/desktop dist

@@ -26,7 +26,7 @@ interface RepoWindow {
 
 const BACKGROUND = "#1f1d1b";
 /** No title bar: the page's top bars run behind the window buttons, centred on them. */
-const TITLE_BAR = { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 19, y: 19 } } as const;
+const TITLE_BAR = { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 15 } } as const;
 /** Fixed, because Supabase only returns to addresses on its allow list. */
 const CALLBACK_PORT = 47831;
 const staticDir = fileURLToPath(new URL("../web", import.meta.url));

@@ -63,7 +63,7 @@ export function Sidebar() {
 
   return (
     <nav aria-label="Workspaces" className="flex min-h-0 flex-1 flex-col">
-      <div data-titlebar className="hidden h-12 shrink-0 items-center pl-20 desktop:flex">
+      <div data-titlebar className="hidden h-10 shrink-0 items-center pl-20 desktop:flex">
         <SidebarToggle />
       </div>
       <TopNav />

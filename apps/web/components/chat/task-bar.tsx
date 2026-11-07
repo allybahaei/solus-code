@@ -27,7 +27,7 @@ export function TaskBar({ task, showSwitch = false }: { task: Task; showSwitch?:
         ? "PR opened"
         : undefined;
   return (
-    <header data-titlebar={showSwitch ? undefined : ""} className={cn("flex h-12 shrink-0 items-center gap-2 border-b px-3", TINT[task.state])}>
+    <header data-titlebar={showSwitch ? undefined : ""} className={cn("flex h-12 shrink-0 items-center gap-2 border-b px-3 desktop:h-10", TINT[task.state])}>
       <div className="min-w-0 flex-1 overflow-hidden">
         <StateLabel state={task.state} {...(label ? { label } : {})} />
       </div>

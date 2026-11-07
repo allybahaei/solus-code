@@ -31,7 +31,7 @@ export function TabBar() {
   const anyWorking = Object.values(tasks).some((t) => t.state === "working");
 
   return (
-    <div data-titlebar className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2">
+    <div data-titlebar className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2 desktop:h-10">
       {!sidebarOpen && (
         <div className="hidden items-center pl-2 md:flex desktop:pl-20">
           <SidebarToggle />

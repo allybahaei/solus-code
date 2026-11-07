@@ -42,7 +42,7 @@ To build the Mac app and its `.dmg`, which aren't signed yet, into `packages/des
 pnpm --filter @solus/desktop dist
 ```
 
-Builds need no account unless `SOLUS_SUPABASE_URL` and `SOLUS_SUPABASE_PUBLISHABLE_KEY` are set, in the environment or in `packages/desktop/.env.local`, and then the app asks for an email sign-in once. The project's Magic Link email template must include `{{ .Token }}`, so it sends a code.
+Builds need no account unless `SOLUS_SUPABASE_URL` and `SOLUS_SUPABASE_PUBLISHABLE_KEY` are set, in the environment or in `packages/desktop/.env.local`, and then the app asks for a GitHub sign-in once. The Supabase project needs its GitHub provider on, and `http://127.0.0.1:47831/callback` in its redirect URLs.
 
 ## Contributing
 

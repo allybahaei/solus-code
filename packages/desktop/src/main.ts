@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { BrowserWindow, Menu, app, dialog, safeStorage, session, shell, type MenuItemConstructorOptions } from "electron";
 import { startDaemon, type Daemon } from "@solus/daemon";
 import { LocalRunner, adapterFor } from "@solus/runner-local";
-import { AccountClient, SignInError, type Account, type AuthConfig } from "./account";
+import { AccountClient, SignInCancelled, SignInError, pkcePair, type Account, type AuthConfig } from "./account";
+import { listenForCode, type PendingCallback } from "./callback";
 import { readRecents, remember, writeRecents, type RecentRepo } from "./recents";
 import { loginShellPath, mergePath } from "./shell-path";
 import { clearAccount, loadAccount, saveAccount } from "./session-store";
@@ -24,6 +25,8 @@ interface RepoWindow {
 }
 
 const BACKGROUND = "#1f1d1b";
+/** Fixed, because Supabase only returns to addresses on its allow list. */
+const CALLBACK_PORT = 47831;
 const staticDir = fileURLToPath(new URL("../web", import.meta.url));
 const open = new Map<string, RepoWindow>();
 let welcome: BrowserWindow | undefined;
@@ -32,6 +35,7 @@ let quitting = false;
 const accounts = __SOLUS_AUTH__ ? new AccountClient(__SOLUS_AUTH__) : undefined;
 let account: Account | undefined;
 let signIn: SignInStep = {};
+let pendingSignIn: PendingCallback<Account> | undefined;
 const needsSignIn = () => accounts !== undefined && account === undefined;
 
 const recentsFile = () => join(app.getPath("userData"), "recents.json");
@@ -176,50 +180,57 @@ function welcomeWindow(): BrowserWindow {
   return window;
 }
 
-/** Links and forms on the Welcome window, which has no other way to reach here. */
+/** Links on the Welcome window, which has no other way to reach here. */
 async function followLink(url: URL) {
   if (url.protocol !== "solus:") return;
-  if (url.host === "email") return requestCode(url.searchParams.get("email")?.trim() ?? "");
-  if (url.host === "resend") return requestCode(signIn.codeSentTo ?? "");
-  if (url.host === "code") return submitCode(url.searchParams.get("code") ?? "");
-  if (url.host === "change-email") {
-    signIn = { ...(signIn.codeSentTo ? { email: signIn.codeSentTo } : {}) };
-    return showWelcome();
-  }
+  if (url.host === "github") return signInWithGitHub();
+  if (url.host === "cancel") return pendingSignIn?.cancel();
   if (url.host === "open") return chooseRepo();
   const repo = url.host === "recent" ? readRecents(recentsFile())[Number(url.pathname.slice(1))] : undefined;
   if (repo) await openRepo(repo.path);
 }
 
-function signInFailed(err: unknown, step: SignInStep) {
-  signIn = { ...step, error: err instanceof SignInError ? err.message : "Something went wrong. Try again." };
-  showWelcome();
-}
+async function signInWithGitHub() {
+  if (!accounts) return;
+  // "Open GitHub again" starts over, so only the newest browser tab can finish.
+  const earlier = pendingSignIn;
+  pendingSignIn = undefined;
+  earlier?.cancel();
+  await earlier?.result.catch(() => undefined);
 
-async function requestCode(email: string) {
+  const { verifier, challenge } = pkcePair();
+  let pending: PendingCallback<Account>;
   try {
-    await accounts?.sendCode(email);
-    signIn = { codeSentTo: email };
-    showWelcome();
+    pending = await listenForCode(CALLBACK_PORT, (code) => accounts.exchangeCode(code, verifier));
   } catch (err) {
-    signInFailed(err, signIn.codeSentTo ? { codeSentTo: signIn.codeSentTo } : { email });
+    return signInFailed(err);
   }
-}
+  pendingSignIn = pending;
+  signIn = { waiting: true };
+  showWelcome();
 
-async function submitCode(code: string) {
-  const email = signIn.codeSentTo;
-  if (!email) return;
   try {
-    const signedIn = await accounts?.verifyCode(email, code);
-    if (!signedIn) return;
+    const url = accounts.authorizeUrl(`http://127.0.0.1:${CALLBACK_PORT}/callback`, challenge);
+    const [signedIn] = await Promise.all([pending.result, shell.openExternal(url)]);
+    pendingSignIn = undefined;
     account = signedIn;
     signIn = {};
     saveAccount(accountFile(), signedIn, safeStorage);
     buildMenu();
+    app.focus({ steal: true });
     await restoreOrWelcome();
   } catch (err) {
-    signInFailed(err, { codeSentTo: email });
+    pending.cancel();
+    if (pendingSignIn !== pending) return; // A newer attempt took over.
+    pendingSignIn = undefined;
+    signInFailed(err);
   }
+}
+
+function signInFailed(err: unknown) {
+  if (err instanceof SignInCancelled) signIn = {};
+  else signIn = { error: err instanceof SignInError ? err.message : "Something went wrong. Try again." };
+  showWelcome();
 }
 
 async function signOut() {

@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from "node:crypto";
+
 const TIMEOUT_MS = 15_000;
 
 export interface Account {
@@ -14,18 +16,22 @@ export interface AuthConfig {
   key: string;
 }
 
-/** Why a sign-in step failed, worded for the person at the screen. */
+/** Why sign-in failed, worded for the person at the screen. */
 export class SignInError extends Error {}
 
-const OFFLINE = "Couldn't reach Solus. Check your connection and try again.";
-const SERVER = "Something went wrong on our side. Try again in a minute.";
-const TOO_MANY = "Too many tries. Wait a minute, then try again.";
+/** The person stopped, or it ran out of time. Not worth an error message. */
+export class SignInCancelled extends SignInError {}
 
-export function validEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const OFFLINE = "Couldn't reach Solus. Check your connection and try again.";
+const UNFINISHED = "Sign-in didn't finish. Try again.";
+
+/** PKCE: only the app holding the verifier can finish a sign-in it started. */
+export function pkcePair(): { verifier: string; challenge: string } {
+  const verifier = randomBytes(32).toString("base64url");
+  return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
 }
 
-/** Email codes through Supabase Auth. One flow covers sign-up and sign-in. */
+/** GitHub sign-in through Supabase Auth, which also creates the account. */
 export class AccountClient {
   constructor(
     private readonly config: AuthConfig,
@@ -49,31 +55,29 @@ export class AccountClient {
     }
   }
 
-  async sendCode(email: string): Promise<void> {
-    if (!validEmail(email)) throw new SignInError("Enter a valid email address.");
-    const res = await this.post("otp", { email, create_user: true });
-    if (res.ok) return;
-    if (res.status === 429) throw new SignInError(TOO_MANY);
-    if (res.status < 500) throw new SignInError("Solus couldn't send a code to that address.");
-    throw new SignInError(SERVER);
+  /** The page to open in the person's browser. */
+  authorizeUrl(redirectTo: string, challenge: string): string {
+    const params = new URLSearchParams({
+      provider: "github",
+      redirect_to: redirectTo,
+      code_challenge: challenge,
+      code_challenge_method: "s256",
+    });
+    return `${this.config.url}/auth/v1/authorize?${params}`;
   }
 
-  async verifyCode(email: string, code: string): Promise<Account> {
-    const token = code.replace(/\s/g, "");
-    if (!/^\d{6,10}$/.test(token)) throw new SignInError("Enter the code from your email.");
-    const res = await this.post("verify", { type: "email", email, token });
-    if (res.status === 429) throw new SignInError(TOO_MANY);
-    if (res.status >= 500) throw new SignInError(SERVER);
-    if (!res.ok) throw new SignInError("That code is wrong or has expired.");
+  async exchangeCode(code: string, verifier: string): Promise<Account> {
+    const res = await this.post("token?grant_type=pkce", { auth_code: code, code_verifier: verifier });
+    if (!res.ok) throw new SignInError(UNFINISHED);
     const session = (await res.json()) as {
       access_token?: string;
       refresh_token?: string;
       user?: { id?: string; email?: string };
     };
-    if (!session.access_token || !session.refresh_token || !session.user?.id) throw new SignInError(SERVER);
+    if (!session.access_token || !session.refresh_token || !session.user?.id) throw new SignInError(UNFINISHED);
     return {
       userId: session.user.id,
-      email: session.user.email ?? email,
+      email: session.user.email ?? "",
       accessToken: session.access_token,
       refreshToken: session.refresh_token,
     };

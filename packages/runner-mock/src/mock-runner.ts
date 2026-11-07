@@ -273,6 +273,14 @@ export class MockRunner implements Runner {
     this.setState(rec, "stuck", { error: { message: "Stopped by you" } });
   }
 
+  async restoreCheckpoint(): Promise<void> {}
+
+  async readFile(id: string, path: string): Promise<string> {
+    return this.get(id).files.get(path)?.patch ?? "";
+  }
+
+  async writeFile(): Promise<void> {}
+
   async listFiles(id: string): Promise<string[]> {
     return [...this.get(id).files.keys()];
   }

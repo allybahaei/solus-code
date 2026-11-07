@@ -93,6 +93,13 @@ export async function openInEditor(id: string) {
   if (target) await openWorkspace(id, target.id);
 }
 
+export const readFile = (id: string, path: string) => attempt(() => getRunner().readFile(id, path));
+export const writeFile = (id: string, path: string, content: string) => attempt(() => getRunner().writeFile(id, path, content));
+export const restoreCheckpoint = (id: string, messageId: string) => attempt(() => getRunner().restoreCheckpoint(id, messageId));
+
+/** The diff with whitespace-only changes left out. */
+export const readQuietDiff = (id: string) => attempt(async () => (await getRunner().getDiff(id, { ignoreWhitespace: true })).files);
+
 export const listFiles = (id: string) => attempt(() => getRunner().listFiles(id));
 
 /** Asks once per agent: it can start a process. */

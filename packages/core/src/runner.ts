@@ -135,7 +135,12 @@ export interface Runner {
   /** Types into the task's shell, starting it if needed. Empty data just starts it. */
   writeTerminal(id: string, data: string): Promise<void>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<void>;
-  getDiff(id: string): Promise<Diff>;
+  getDiff(id: string, opts?: { ignoreWhitespace?: boolean }): Promise<Diff>;
+  /** Puts the worktree back as it was before a message. Later changes are lost. */
+  restoreCheckpoint(id: string, messageId: string): Promise<void>;
+  readFile(id: string, path: string): Promise<string>;
+  /** Saves a file in the task's worktree. */
+  writeFile(id: string, path: string, content: string): Promise<void>;
   /** Files in the task's worktree, or the repo before it has one, for mentioning. */
   listFiles(id: string): Promise<string[]>;
   /** Models an agent can run. Empty when Solus can't choose one for it. */

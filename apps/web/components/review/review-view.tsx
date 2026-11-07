@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GitMerge, Info } from "lucide-react";
 import type { DiffFile, Task } from "@solus/core";
 import { FileDiff } from "@/components/review/file-diff";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { sendMessage } from "@/lib/actions";
+import { readQuietDiff, sendMessage } from "@/lib/actions";
 import { formatReview } from "@/lib/review-message";
 import { reviewOf, useReview } from "@/lib/review-store";
 import { useSolus } from "@/lib/store";
@@ -40,7 +40,21 @@ export function ReviewView({ task, files, narrow }: { task: Task; files: DiffFil
   const setInView = useReview((s) => s.setInView);
   const scrollTarget = useReview((s) => s.scrollTarget);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const sorted = sortFiles(files);
+  const hideWhitespace = useReview((s) => s.hideWhitespace);
+  const toggleWhitespace = useReview((s) => s.toggleWhitespace);
+  const [quiet, setQuiet] = useState<DiffFile[] | null>(null);
+  useEffect(() => {
+    if (!hideWhitespace) return;
+    let live = true;
+    void readQuietDiff(task.id).then((list) => {
+      if (live && list) setQuiet(list);
+    });
+    return () => {
+      live = false;
+    };
+  }, [hideWhitespace, task.id, files]);
+  const sorted = sortFiles(hideWhitespace && quiet ? quiet : files);
+  const hidden = files.length - sorted.length;
   const viewedCount = sorted.filter((f) => review.viewed.includes(f.path)).length;
   const merged = task.state === "merged";
   const mode = narrow ? "unified" : diffMode;
@@ -94,9 +108,14 @@ export function ReviewView({ task, files, narrow }: { task: Task; files: DiffFil
       <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
         <span className="tabular-nums">
           {viewedCount} of {sorted.length} viewed
+          {hidden > 0 && ` · ${hidden} with only whitespace changes hidden`}
         </span>
+        <label className="ml-auto flex cursor-pointer items-center gap-1.5 select-none hover:text-foreground">
+          <input type="checkbox" checked={hideWhitespace} onChange={toggleWhitespace} className="size-3.5 accent-[var(--state-review)]" />
+          Hide whitespace
+        </label>
         {!narrow && (
-          <div role="radiogroup" aria-label="Diff layout" className="ml-auto flex rounded-md border p-0.5">
+          <div role="radiogroup" aria-label="Diff layout" className="flex rounded-md border p-0.5">
             {(["unified", "split"] as const).map((m) => (
               <button
                 key={m}
@@ -125,7 +144,7 @@ export function ReviewView({ task, files, narrow }: { task: Task; files: DiffFil
 
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
         {sorted.map((f) => (
-          <FileDiff key={f.path} taskId={task.id} file={f} mode={mode} canComment={!merged} />
+          <FileDiff key={f.path} taskId={task.id} file={f} mode={mode} canComment={!merged} canEdit={!merged && !task.archivedAt && task.state !== "working"} />
         ))}
       </div>
 

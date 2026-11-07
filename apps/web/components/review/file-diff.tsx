@@ -1,11 +1,12 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { DiffModeEnum, DiffView, SplitSide } from "@git-diff-view/react";
 import "@git-diff-view/react/styles/diff-view-pure.css";
-import { ChevronRight, MessageSquare } from "lucide-react";
+import { ChevronRight, MessageSquare, Pencil } from "lucide-react";
 import type { DiffFile } from "@solus/core";
 import { CommentForm } from "@/components/review/comment-form";
+import { FileEditor } from "@/components/review/file-editor";
 import { Button } from "@/components/ui/button";
 import { splitPath } from "@/lib/format";
 import { useResolvedTheme } from "@/lib/hooks";
@@ -27,17 +28,21 @@ export const FileDiff = memo(function FileDiff({
   file,
   mode,
   canComment,
+  canEdit,
 }: {
   taskId: string;
   file: DiffFile;
   mode: "unified" | "split";
   canComment: boolean;
+  canEdit: boolean;
 }) {
   const viewed = useReview((s) => reviewOf(s, taskId).viewed.includes(file.path));
   const allComments = useReview((s) => reviewOf(s, taskId).comments);
   const toggleViewed = useReview((s) => s.toggleViewed);
   const addComment = useReview((s) => s.addComment);
   const [open, setOpen] = useState(!viewed);
+  const [editing, setEditing] = useState(false);
+  const stopEditing = useCallback(() => setEditing(false), []);
   const theme = useResolvedTheme();
   const comments = useMemo(() => allComments.filter((c) => c.path === file.path), [allComments, file.path]);
   const [dir, name] = splitPath(file.path);
@@ -82,6 +87,21 @@ export const FileDiff = memo(function FileDiff({
           {file.additions > 0 && <span className="text-diff-add">+{file.additions}</span>}{" "}
           {file.deletions > 0 && <span className="text-diff-del">−{file.deletions}</span>}
         </span>
+        {canEdit && file.status !== "deleted" && (
+          <button
+            type="button"
+            onClick={() => {
+              setEditing((e) => !e);
+              setOpen(true);
+            }}
+            aria-pressed={editing}
+            aria-label={`Edit ${file.path}`}
+            title="Edit this file"
+            className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <Pencil className="size-3.5" />
+          </button>
+        )}
         <label className="ml-2 flex shrink-0 cursor-pointer items-center gap-1.5 text-muted-foreground select-none hover:text-foreground">
           <input
             type="checkbox"
@@ -95,7 +115,8 @@ export const FileDiff = memo(function FileDiff({
           Viewed
         </label>
       </header>
-      {open && (
+      {open && editing && <FileEditor taskId={taskId} path={file.path} onDone={stopEditing} />}
+      {open && !editing && (
         <div className="solus-diff overflow-x-auto">
           <DiffView<ReviewComment[]>
             data={{
@@ -147,7 +168,7 @@ function CommentThread({ taskId, comments, canEdit }: { taskId: string; comments
             }}
           />
         ) : (
-          <div key={c.id} className="flex items-start gap-3 px-3 py-2.5 text-sm">
+          <div key={c.id} data-comment={c.id} className="flex scroll-mt-16 items-start gap-3 px-3 py-2.5 text-sm">
             <span className="mt-0.5 rounded bg-state-needs-input/15 px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-state-needs-input uppercase">
               Draft
             </span>

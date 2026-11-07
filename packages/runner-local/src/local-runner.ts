@@ -36,7 +36,9 @@ import {
 import { RunningAction } from "./action";
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
 import { listModels } from "./agents/models";
+import { forgetCheckpoints, restoreCheckpoint, saveCheckpoint } from "./checkpoint";
 import { readDiff } from "./diff";
+import { readWorkspaceFile, writeWorkspaceFile } from "./files";
 import { branchExists, git, readRepo } from "./git";
 import {
   addWorktree,
@@ -81,6 +83,10 @@ interface Run {
   lastMessage?: string;
   /** The options the running session started with. */
   startedWith?: string;
+  /** The user message on its way to the agent, for its checkpoint. */
+  sending?: string;
+  /** Files were restored behind this chat's back, so its next message says so. */
+  restored?: boolean;
 }
 
 interface Rec extends StoredTask {
@@ -113,6 +119,11 @@ const ATTACHMENTS = ".solus-attachments";
 
 /** The most files a mention search looks through. */
 const MAX_FILES = 20_000;
+
+/** How many checkpoints each task keeps. Older ones can no longer be restored. */
+const MAX_CHECKPOINTS = 100;
+
+const RESTORED_NOTE = "Note: the person restored the files to an earlier point, so your edits since then are gone. Check the current files before relying on them.";
 
 const optionsKey = (chat: Chat) => JSON.stringify(chat.options ?? {});
 
@@ -268,7 +279,7 @@ export class LocalRunner implements Runner {
     this.requireActive(rec);
     if (rec.task.state !== "idle") throw new Error(`Task ${id} is already started (${rec.task.state}).`);
     const run = this.runOf(rec);
-    this.addMessage(rec, "user", rec.task.prompt);
+    run.sending = this.addMessage(rec, "user", rec.task.prompt);
     this.setChat(rec, run, "working");
     run.launching = this.launch(rec, run, rec.task.prompt);
   }
@@ -316,9 +327,9 @@ export class LocalRunner implements Runner {
       delete run.agentSession;
     }
     if (run.chat.title === NEW_CHAT) run.chat.title = titleFrom(message);
-    this.addMessage(rec, "user", message, undefined, run);
+    run.sending = this.addMessage(rec, "user", message, undefined, run);
     if (run.chat.state !== "working") this.setChat(rec, run, "working");
-    this.deliver(rec, run, message);
+    await this.deliver(rec, run, message);
   }
 
   async listFiles(id: string): Promise<string[]> {
@@ -350,7 +361,11 @@ export class LocalRunner implements Runner {
   }
 
   /** Sends to the running session, or starts one if there's none or its options changed. */
-  private deliver(rec: Rec, run: Run, message: string) {
+  private async deliver(rec: Rec, run: Run, text: string) {
+    // Before the first message there's no worktree yet: launch takes that checkpoint.
+    await this.checkpoint(rec, run);
+    const message = run.restored ? `${RESTORED_NOTE}\n\n${text}` : text;
+    delete run.restored;
     if (run.session && run.startedWith === optionsKey(run.chat)) {
       run.session.send(message);
       return;
@@ -358,6 +373,51 @@ export class LocalRunner implements Runner {
     run.session?.stop();
     delete run.session;
     run.launching = this.launch(rec, run, message);
+  }
+
+  /** Worth losing rather than holding up the agent, so a failure is only a note. */
+  private async checkpoint(rec: Rec, run: Run) {
+    const messageId = run.sending;
+    if (!messageId || !rec.worktree || !existsSync(rec.worktree)) return;
+    delete run.sending;
+    try {
+      const commit = await saveCheckpoint(rec.worktree, rec.task.id, messageId);
+      const kept = Object.entries({ ...rec.task.checkpoints, [messageId]: commit }).slice(-MAX_CHECKPOINTS);
+      rec.task.checkpoints = Object.fromEntries(kept);
+      this.updated(rec);
+    } catch (err) {
+      this.term(rec, `\x1b[33mCouldn't save a checkpoint: ${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`);
+    }
+  }
+
+  restoreCheckpoint(id: string, messageId: string): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      this.requireActive(rec);
+      const commit = rec.task.checkpoints?.[messageId];
+      if (!commit) throw new Error("That checkpoint is no longer available.");
+      if (!rec.worktree || !existsSync(rec.worktree)) throw new Error("This task's worktree is gone.");
+      if ([...rec.runs.values()].some((r) => r.chat.state === "working")) throw new Error("Stop the agent before restoring files.");
+      await restoreCheckpoint(rec.worktree, commit);
+      for (const run of rec.runs.values()) run.restored = true;
+      this.addMessage(rec, "tool", "Files back to before this message", "Restored", this.runOf(rec));
+      await this.refreshDiff(rec);
+    });
+  }
+
+  async readFile(id: string, path: string): Promise<string> {
+    return readWorkspaceFile(this.requireWorktree(this.get(id)), path);
+  }
+
+  async writeFile(id: string, path: string, content: string): Promise<void> {
+    const rec = this.get(id);
+    writeWorkspaceFile(this.requireWorktree(rec), path, content);
+    await this.refreshDiff(rec);
+  }
+
+  private requireWorktree(rec: Rec): string {
+    if (!rec.worktree || !existsSync(rec.worktree)) throw new Error("This task has no workspace right now.");
+    return rec.worktree;
   }
 
   async answerApproval(id: string, approvalId: string, allow: boolean): Promise<void> {
@@ -455,6 +515,7 @@ export class LocalRunner implements Runner {
       await this.launched(rec);
       // Only ever a branch and worktree Solus made for this task.
       await removeWorkspace(this.repo.path, rec.worktree, rec.task.branch, !rec.task.branch.startsWith("solus/"));
+      await forgetCheckpoints(this.repo.path, id);
       this.records.delete(id);
       this.store.forget(id);
       this.save();
@@ -507,13 +568,14 @@ export class LocalRunner implements Runner {
     rec.shell?.resize(rec.size);
   }
 
-  async getDiff(id: string): Promise<Diff> {
+  async getDiff(id: string, opts: { ignoreWhitespace?: boolean } = {}): Promise<Diff> {
     const rec = this.get(id);
+    const live = opts.ignoreWhitespace && rec.worktree && existsSync(rec.worktree);
     return {
       taskId: id,
       baseBranch: rec.task.baseBranch,
       branch: rec.task.branch,
-      files: structuredClone(rec.files),
+      files: live ? await readDiff(rec.worktree as string, rec.task.baseBranch, this.copiedFiles(), { ignoreWhitespace: true }) : structuredClone(rec.files),
     };
   }
 
@@ -905,7 +967,7 @@ export class LocalRunner implements Runner {
     if (lead.error) rec.task.error = lead.error;
   }
 
-  private addMessage(rec: Rec, role: MessageRole, text: string, tool?: string, run?: Run) {
+  private addMessage(rec: Rec, role: MessageRole, text: string, tool?: string, run?: Run): string {
     const at = this.touch(rec);
     const id = `msg_${at}_${this.nextMessage++}`;
     const chatId = run && run.chat.id !== MAIN_CHAT ? { chatId: run.chat.id } : {};
@@ -923,6 +985,7 @@ export class LocalRunner implements Runner {
       ...(tool ? { tool } : {}),
       ...chatId,
     });
+    return id;
   }
 
   private term(rec: Rec, data: string, save = true) {
@@ -949,6 +1012,8 @@ export class LocalRunner implements Runner {
     const abandoned = () => launch !== run.launch;
     try {
       await this.workspaceReady(rec);
+      if (abandoned()) return;
+      await this.checkpoint(rec, run);
       if (abandoned()) return;
       const cwd = rec.worktree as string;
       // The main chat's agent needs the task if it never saw it. Other chats start clean.
@@ -1047,7 +1112,7 @@ export class LocalRunner implements Runner {
         case "turn_end":
           await this.refreshDiff(rec);
           if (run.chat.state !== "working") break;
-          if (run.chat.queued?.length) this.sendNextQueued(rec, run);
+          if (run.chat.queued?.length) await this.sendNextQueued(rec, run);
           else this.setChat(rec, run, "ready_for_review");
           break;
         case "error":
@@ -1066,13 +1131,13 @@ export class LocalRunner implements Runner {
   }
 
   /** The turn ended with messages waiting, so the next one starts another. */
-  private sendNextQueued(rec: Rec, run: Run) {
+  private async sendNextQueued(rec: Rec, run: Run) {
     const next = run.chat.queued?.shift();
     if (!next) return;
     if (run.chat.queued?.length === 0) delete run.chat.queued;
     this.updated(rec);
-    this.addMessage(rec, "user", next.text, undefined, run);
-    this.deliver(rec, run, next.text);
+    run.sending = this.addMessage(rec, "user", next.text, undefined, run);
+    await this.deliver(rec, run, next.text);
   }
 
   private onText(rec: Rec, run: Run, event: Extract<AgentEvent, { type: "text" }>) {

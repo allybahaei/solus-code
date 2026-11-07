@@ -49,9 +49,14 @@ const DIFF_ARGS = ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext
  * where the branch left the base, plus new files git doesn't track yet.
  * `exclude` leaves out files Solus copied in, which aren't the agent's work.
  */
-export async function readDiff(worktree: string, baseBranch: string, exclude: readonly string[] = []): Promise<DiffFile[]> {
+export async function readDiff(
+  worktree: string,
+  baseBranch: string,
+  exclude: readonly string[] = [],
+  { ignoreWhitespace = false }: { ignoreWhitespace?: boolean } = {},
+): Promise<DiffFile[]> {
   const base = (await git(worktree, ["merge-base", baseBranch, "HEAD"])).trim();
-  const tracked = await git(worktree, [...DIFF_ARGS, "-M", base]);
+  const tracked = await git(worktree, [...DIFF_ARGS, "-M", ...(ignoreWhitespace ? ["-w"] : []), base]);
   const untracked = (await git(worktree, ["ls-files", "--others", "--exclude-standard", "-z", "--", ".", ...excludePaths(exclude)]))
     .split("\0")
     .filter(Boolean);

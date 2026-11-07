@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 import type { AgentMessage, Task } from "@solus/core";
 import { Markdown } from "@/components/markdown";
+import { restoreCheckpoint } from "@/lib/actions";
 import { splitMentions } from "@/lib/composer";
 import { useTypedText } from "@/lib/typewriter";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,10 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
           item.kind === "tools" ? (
             <ToolGroup key={item.id} calls={item.calls} live={task.state === "working" && i === items.length - 1} />
           ) : item.message.role === "user" ? (
-            <div key={item.message.id} className="flex justify-end">
+            <div key={item.message.id} className="group flex items-center justify-end gap-2">
+              {task.checkpoints?.[item.message.id] && !task.archivedAt && task.state !== "merged" && (
+                <RestoreButton taskId={task.id} messageId={item.message.id} busy={task.state === "working"} />
+              )}
               <div className="max-w-[85%] rounded-2xl bg-user-bubble px-5 py-3.5 whitespace-pre-wrap">
                 <UserText text={item.message.text} />
               </div>
@@ -98,6 +102,30 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
         )}
       </div>
     </div>
+  );
+}
+
+/** Restoring discards work, so the first click only asks. */
+function RestoreButton({ taskId, messageId, busy }: { taskId: string; messageId: string; busy: boolean }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onBlur={() => setAsking(false)}
+      onClick={() => {
+        if (asking) void restoreCheckpoint(taskId, messageId);
+        setAsking(!asking);
+      }}
+      title={busy ? "Stop the agent to restore files" : "Put the files back as they were before this message. Changes since then are lost."}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs opacity-0 outline-none group-hover:opacity-100 focus-visible:opacity-100 disabled:hidden",
+        asking ? "bg-state-stuck-soft text-state-stuck opacity-100" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      <RotateCcw className="size-3.5" />
+      {asking ? "Lose later changes?" : "Restore"}
+    </button>
   );
 }
 

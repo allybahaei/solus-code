@@ -2,7 +2,7 @@
 
 import { Check, Eye, MessageSquare } from "lucide-react";
 import type { DiffFile, Task } from "@solus/core";
-import { splitPath } from "@/lib/format";
+import { groupByFolder, splitPath } from "@/lib/format";
 import { reviewOf, useReview } from "@/lib/review-store";
 import { cn } from "@/lib/utils";
 
@@ -58,53 +58,57 @@ export function Changes({ task, files }: { task: Task; files: DiffFile[] }) {
             {task.state === "idle" ? "Changes appear here once the agent starts editing." : "No changes yet."}
           </p>
         ) : (
-          <ul>
-            {[...files]
-              .sort((a, b) => a.path.localeCompare(b.path))
-              .map((f) => {
-                const [dir, name] = splitPath(f.path);
-                const status = STATUS[f.status];
-                const viewed = review.viewed.includes(f.path);
-                const comments = review.comments.filter((c) => c.path === f.path).length;
-                const current = reviewing && inView === f.path;
-                return (
-                  <li key={f.path}>
-                    <button
-                      type="button"
-                      onClick={() => showFile(task.id, f.path)}
-                      aria-current={current ? "true" : undefined}
-                      title={`Review ${f.path}`}
-                      className={cn(
-                        "flex w-full items-center gap-2 px-3 py-1 text-left text-xs hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
-                        current && "bg-accent",
-                        viewed && !current && "opacity-60",
-                      )}
-                    >
-                      <span className="grid size-3 shrink-0 place-items-center text-state-review">
-                        {viewed && <Check className="size-3" aria-label="Viewed" />}
-                      </span>
-                      <span className="flex min-w-0 flex-1 font-mono">
-                        <span className="truncate text-muted-foreground">{dir}</span>
-                        <span className="shrink-0">{name}</span>
-                      </span>
-                      {comments > 0 && (
-                        <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
-                          <MessageSquare className="size-3" />
-                          {comments}
+          groupByFolder(files).map(({ folder, files: inFolder }) => (
+            <div key={folder}>
+              {folder && (
+                <div className="truncate px-3 pt-2 pb-0.5 font-mono text-[0.6875rem] text-muted-foreground" title={folder}>
+                  {folder}/
+                </div>
+              )}
+              <ul>
+                {inFolder.map((f) => {
+                  const [, name] = splitPath(f.path);
+                  const status = STATUS[f.status];
+                  const viewed = review.viewed.includes(f.path);
+                  const comments = review.comments.filter((c) => c.path === f.path).length;
+                  const current = reviewing && inView === f.path;
+                  return (
+                    <li key={f.path}>
+                      <button
+                        type="button"
+                        onClick={() => showFile(task.id, f.path)}
+                        aria-current={current ? "true" : undefined}
+                        title={`Review ${f.path}`}
+                        className={cn(
+                          "flex w-full items-center gap-2 px-3 py-1 text-left text-xs hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
+                          current && "bg-accent",
+                          viewed && !current && "opacity-60",
+                        )}
+                      >
+                        <span className="grid size-3 shrink-0 place-items-center text-state-review">
+                          {viewed && <Check className="size-3" aria-label="Viewed" />}
                         </span>
-                      )}
-                      <span className="shrink-0 font-mono tabular-nums">
-                        {f.additions > 0 && <span className="text-diff-add">+{f.additions}</span>}{" "}
-                        {f.deletions > 0 && <span className="text-diff-del">−{f.deletions}</span>}
-                      </span>
-                      <span className={cn("w-3 shrink-0 text-center font-mono font-semibold", status.className)} title={status.label}>
-                        {status.letter}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-          </ul>
+                        <span className="min-w-0 flex-1 truncate font-mono">{name}</span>
+                        {comments > 0 && (
+                          <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
+                            <MessageSquare className="size-3" />
+                            {comments}
+                          </span>
+                        )}
+                        <span className="shrink-0 font-mono tabular-nums">
+                          {f.additions > 0 && <span className="text-diff-add">+{f.additions}</span>}{" "}
+                          {f.deletions > 0 && <span className="text-diff-del">−{f.deletions}</span>}
+                        </span>
+                        <span className={cn("w-3 shrink-0 text-center font-mono font-semibold", status.className)} title={status.label}>
+                          {status.letter}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))
         )}
       </div>
     </section>

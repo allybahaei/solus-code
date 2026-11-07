@@ -37,6 +37,8 @@ export const SHORTCUTS: { group: string; items: { keys: string[]; label: string 
     group: "In review",
     items: [
       { keys: ["V"], label: "Mark the file viewed" },
+      { keys: ["."], label: "Next comment" },
+      { keys: [","], label: "Previous comment" },
       { keys: ["C"], label: "Write an overall comment" },
     ],
   },

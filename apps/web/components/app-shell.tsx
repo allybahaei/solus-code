@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { Composer, COMPOSER_ID } from "@/components/chat/composer";
 import { CommandPalette, ShortcutSheet } from "@/components/command-palette";
@@ -19,7 +19,7 @@ import { ChecksView } from "@/components/checks/checks-view";
 import { MAIN_CHAT } from "@solus/core";
 import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/review-view";
 import { loadSettings, openInEditor, startTask } from "@/lib/actions";
-import { loadReviewPrefs, useReview } from "@/lib/review-store";
+import { loadReviewPrefs, reviewOf, useReview } from "@/lib/review-store";
 import { useMediaQuery } from "@/lib/hooks";
 import { getConnection, getRunner } from "@/lib/runner";
 import { activeChatId, connectRunner, taskInChat, useSolus, type CenterView } from "@/lib/store";
@@ -217,6 +217,7 @@ function useTaskLinks() {
 }
 
 function useKeyboard() {
+  const commentIndex = useRef(-1);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
@@ -247,8 +248,26 @@ function useKeyboard() {
         if (next) r.showFile(task.id, next);
       };
 
+      /** Moves to the next or previous draft comment. */
+      const stepComment = (delta: 1 | -1) => {
+        if (!task) return;
+        const comments = [...reviewOf(r, task.id).comments].sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+        if (comments.length === 0) return;
+        commentIndex.current = (commentIndex.current + delta + comments.length) % comments.length;
+        const comment = comments[commentIndex.current];
+        if (!comment) return;
+        r.showFile(task.id, comment.path);
+        requestAnimationFrame(() => document.querySelector(`[data-comment="${CSS.escape(comment.id)}"]`)?.scrollIntoView({ block: "center" }));
+      };
+
       const handled = (() => {
         switch (e.key) {
+          case ".":
+            if (reviewing) stepComment(1);
+            return reviewing;
+          case ",":
+            if (reviewing) stepComment(-1);
+            return reviewing;
           case "j":
           case "ArrowDown":
             if (reviewing) stepFile(1);

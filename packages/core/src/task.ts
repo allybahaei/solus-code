@@ -135,6 +135,8 @@ export interface Task {
   pullRequest?: PullRequestRef;
   /** Set once merged locally: the branch it was merged into. */
   mergedInto?: string;
+  /** Snapshots of the worktree, by the user message they were taken before. */
+  checkpoints?: Record<string, string>;
 }
 
 /** Where a task can start other than a blank prompt. */

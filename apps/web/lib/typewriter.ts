@@ -13,10 +13,19 @@ export function advance(shown: number, target: number, ms: number): number {
   return Math.min(target, shown + (perSecond * ms) / 1000);
 }
 
-/** Closes bold and code left open by a cut, so they format while typing instead of showing symbols. */
+const FENCE = /^ {0,3}(`{3,}|~{3,})/gm;
+
+/**
+ * Closes what a cut left open, so it formats while typing instead of showing
+ * symbols: a code block, then inline code and bold outside code blocks.
+ */
 export function closeOpenMarkup(text: string): string {
-  const bold = text.split("**").length - 1;
-  const code = text.split("`").length - 1;
+  const fences = text.match(FENCE) ?? [];
+  if (fences.length % 2 === 1) return `${text}\n${fences.at(-1)?.trim()}`;
+  // Finished code blocks can hold any symbols, so they don't count.
+  const prose = text.replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?^ {0,3}\1/gm, "");
+  const bold = prose.split("**").length - 1;
+  const code = prose.split("`").length - 1;
   const trimmed = text.endsWith("*") && !text.endsWith("**") ? text.slice(0, -1) : text;
   return trimmed + (code % 2 ? "`" : "") + (bold % 2 ? "**" : "");
 }

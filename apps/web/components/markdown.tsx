@@ -1,73 +1,42 @@
-import { Fragment, type ReactNode } from "react";
+import { memo } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import remarkGfm from "remark-gfm";
 
-/**
- * Just enough markdown for agent messages: paragraphs, bullet and numbered
- * lists, **bold**, `code` and [links](url). A real renderer can replace this later.
- */
-export function Markdown({ text }: { text: string }) {
-  const blocks = text.split(/\n{2,}/);
+const code = "rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]";
+
+const components: Components = {
+  // Agents link to local files, which a browser can't open, so keep the name only.
+  a: ({ href, children }) =>
+    href && /^https?:/.test(href) ? (
+      <a href={href} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    ) : (
+      <code className={code} title={href}>
+        {children}
+      </code>
+    ),
+  // Images in agent replies would load from anywhere, so show where they point instead.
+  img: ({ src, alt }) => (
+    <code className={code} title={typeof src === "string" ? src : undefined}>
+      {alt || "image"}
+    </code>
+  ),
+  table: ({ children }) => (
+    <div className="overflow-x-auto">
+      <table>{children}</table>
+    </div>
+  ),
+};
+
+/** Agent replies as GitHub-flavoured Markdown. Raw HTML in them is shown as text, never run. */
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
-    <div className="space-y-3">
-      {blocks.map((block, i) => {
-        const lines = block.split("\n");
-        if (lines.every((l) => /^\d+\.\s/.test(l))) {
-          return (
-            <ol key={i} className="list-decimal space-y-1 pl-5">
-              {lines.map((l, j) => (
-                <li key={j}>{inline(l.replace(/^\d+\.\s/, ""))}</li>
-              ))}
-            </ol>
-          );
-        }
-        if (lines.every((l) => /^[-*]\s/.test(l))) {
-          return (
-            <ul key={i} className="list-disc space-y-1 pl-5">
-              {lines.map((l, j) => (
-                <li key={j}>{inline(l.replace(/^[-*]\s/, ""))}</li>
-              ))}
-            </ul>
-          );
-        }
-        return (
-          <p key={i}>
-            {lines.map((l, j) => (
-              <Fragment key={j}>
-                {j > 0 && <br />}
-                {inline(l)}
-              </Fragment>
-            ))}
-          </p>
-        );
-      })}
+    <div className="solus-md">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { detect: false }]]} components={components}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
-}
-
-function inline(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g).map((part, i) => {
-    // Agents link to local files, which a browser can't open, so keep the name only.
-    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
-    if (link) {
-      return /^https?:/.test(link[2] ?? "") ? (
-        <a key={i} href={link[2]} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-          {link[1]}
-        </a>
-      ) : (
-        <code key={i} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]" title={link[2]}>
-          {link[1]}
-        </code>
-      );
-    }
-    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
-    }
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
-      return (
-        <code key={i} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
-          {part.slice(1, -1)}
-        </code>
-      );
-    }
-    return part;
-  });
-}
+});

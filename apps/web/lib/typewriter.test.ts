@@ -38,6 +38,14 @@ describe("closeOpenMarkup", () => {
     expect(closeOpenMarkup("run `pnpm")).toBe("run `pnpm`");
   });
 
+  it("closes a code block cut part way, leaving its contents alone", () => {
+    expect(closeOpenMarkup("Run this:\n\n```ts\nconst a = `x")).toBe("Run this:\n\n```ts\nconst a = `x\n```");
+  });
+
+  it("ignores symbols inside finished code blocks", () => {
+    expect(closeOpenMarkup("```\na ** b `\n```\nthen **bo")).toBe("```\na ** b `\n```\nthen **bo**");
+  });
+
   it("drops half of a bold marker", () => {
     expect(closeOpenMarkup("this is *")).toBe("this is ");
   });

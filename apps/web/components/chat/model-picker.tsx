@@ -32,7 +32,8 @@ export function ModelPicker({ agent, options, onChange }: { agent: AgentKind; op
     </DropdownMenuItem>
   );
   const without = (key: "model" | "effort") => {
-    const { [key]: _, ...rest } = options;
+    const rest = { ...options };
+    delete rest[key];
     return rest;
   };
 

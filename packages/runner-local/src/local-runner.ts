@@ -23,7 +23,9 @@ import {
   type SetupStatus,
   type Chat,
   type MergeStrategy,
+  type OpenTarget,
   type PullRequestStatus,
+  type Settings,
   type Task,
   type TaskError,
   type TaskSources,
@@ -42,6 +44,8 @@ import {
   removeWorktree,
   startMerge,
 } from "./merge";
+import { listOpenTargets, openFolder } from "./open";
+import { readSettings, writeSettings } from "./settings";
 import { checkSetup, installAgent, type SetupCommands } from "./setup";
 import { mergePullRequest, readCheckLog, readPullRequest } from "./pull-request";
 import { ghJson, listSources, resolveSource } from "./source";
@@ -133,6 +137,7 @@ export class LocalRunner implements Runner {
     private readonly worktrees: string,
     private readonly adapterFor: (agent: AgentKind) => AgentAdapter,
     private readonly commands: SetupCommands,
+    private readonly settingsFile: string,
   ) {}
 
   /** Opens a repo, restoring its saved tasks. Rejects if it isn't usable. */
@@ -147,6 +152,7 @@ export class LocalRunner implements Runner {
       join(dir, "worktrees", key),
       adapterFor,
       commands,
+      join(dir, "settings.json"),
     );
     runner.store.lock();
     await runner.restore();
@@ -453,6 +459,24 @@ export class LocalRunner implements Runner {
       branch: rec.task.branch,
       files: structuredClone(rec.files),
     };
+  }
+
+  async listOpenTargets(): Promise<OpenTarget[]> {
+    return listOpenTargets();
+  }
+
+  async openWorkspace(id: string, target: string): Promise<void> {
+    const { worktree } = this.get(id);
+    if (!worktree || !existsSync(worktree)) throw new Error("Start the task first: it has no workspace yet.");
+    await openFolder(target, worktree);
+  }
+
+  async getSettings(): Promise<Settings> {
+    return readSettings(this.settingsFile);
+  }
+
+  async saveSettings(changes: Partial<Settings>): Promise<Settings> {
+    return writeSettings(this.settingsFile, changes);
   }
 
   merge(id: string, opts: MergeOptions): Promise<void> {

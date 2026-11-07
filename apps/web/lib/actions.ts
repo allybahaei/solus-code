@@ -9,6 +9,7 @@ import {
   type PullRequestCheck,
   type PullRequestComment,
   type PullRequestStatus,
+  type Settings,
   type TaskSource,
 } from "@solus/core";
 import { useReview } from "@/lib/review-store";
@@ -72,6 +73,33 @@ export async function attachFile(id: string, file: File): Promise<string | undef
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return attempt(() => getRunner().attachFile(id, file.name, btoa(binary)));
+}
+
+/** Asks once: installed apps don't change while the app is open. */
+export async function loadOpenTargets() {
+  if (useSolus.getState().openTargets) return;
+  const openTargets = await attempt(() => getRunner().listOpenTargets());
+  if (openTargets) useSolus.setState({ openTargets });
+}
+
+export const openWorkspace = (id: string, target: string) => attempt(() => getRunner().openWorkspace(id, target));
+
+/** Opens the task in the chosen editor, or the first one found. */
+export async function openInEditor(id: string) {
+  await loadOpenTargets();
+  const { openTargets, settings } = useSolus.getState();
+  const target = openTargets?.find((t) => t.id === settings.editor) ?? openTargets?.find((t) => t.kind === "editor") ?? openTargets?.[0];
+  if (target) await openWorkspace(id, target.id);
+}
+
+export async function loadSettings() {
+  const settings = await attempt(() => getRunner().getSettings());
+  if (settings) useSolus.setState({ settings });
+}
+
+export async function saveSettings(changes: Partial<Settings>) {
+  useSolus.setState((s) => ({ settings: { ...s.settings, ...changes } }));
+  await attempt(() => getRunner().saveSettings(changes));
 }
 
 export const startTask = (id: string) => attempt(() => getRunner().startTask(id));

@@ -2,11 +2,13 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BrowserWindow, Menu, app, dialog, safeStorage, session, shell, type MenuItemConstructorOptions } from "electron";
+import { BrowserWindow, Menu, Notification, app, dialog, safeStorage, session, shell, type MenuItemConstructorOptions } from "electron";
 import { startDaemon, type Daemon } from "@solus/daemon";
 import { LocalRunner, adapterFor } from "@solus/runner-local";
+import type { Task } from "@solus/core";
 import { AccountClient, SignInCancelled, SignInError, pkcePair, type Account, type AuthConfig } from "./account";
 import { listenForCode, type PendingCallback } from "./callback";
+import { alertFor, attentionCount } from "./alerts";
 import { readRecents, remember, writeRecents, type RecentRepo } from "./recents";
 import { loginShellPath, mergePath } from "./shell-path";
 import { clearAccount, loadAccount, saveAccount } from "./session-store";
@@ -78,6 +80,11 @@ async function openRepo(chosen: string) {
     const daemon = await startOn(runner, token, known?.port);
     const entry = repoWindow(path, runner, daemon, `http://127.0.0.1:${daemon.port}`, token);
     open.set(path, entry);
+    runner.subscribe((event) => {
+      if (event.type === "task.state_changed") void alert(entry, event.task);
+      if (event.type === "task.deleted" || event.type === "task.state_changed") void updateBadge();
+    });
+    void updateBadge();
     updateRecents((recents) => remember(recents, { path, port: daemon.port }));
     welcome?.close();
   } catch (err) {
@@ -122,11 +129,33 @@ function repoWindow(path: string, runner: LocalRunner, daemon: Daemon, origin: s
   window.on("closed", () => {
     open.delete(path);
     stop(entry);
+    void updateBadge();
     if (!quitting && open.size === 0) showWelcome();
   });
 
   void window.loadURL(`${origin}/#token=${token}`);
   return entry;
+}
+
+/** Tells the person a task needs them, unless they're looking at it. */
+async function alert(entry: RepoWindow, task: Task) {
+  const message = alertFor(task);
+  if (!message || entry.window.isFocused()) return;
+  const { notifications, sound } = await entry.runner.getSettings();
+  if (!notifications) return;
+  const shown = new Notification({ ...message, silent: !sound, ...(sound ? { sound: "Glass" } : {}) });
+  shown.on("click", () => {
+    entry.window.show();
+    entry.window.focus();
+    void entry.window.webContents.executeJavaScript(`location.hash=${JSON.stringify(`task=${task.id}`)}`);
+  });
+  shown.show();
+}
+
+async function updateBadge() {
+  const tasks = await Promise.all([...open.values()].map((entry) => entry.runner.listTasks()));
+  const count = attentionCount(tasks.flat());
+  app.dock?.setBadge(count > 0 ? String(count) : "");
 }
 
 function stop(entry: RepoWindow) {

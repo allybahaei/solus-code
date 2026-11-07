@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowRight, House, Monitor, Moon, PanelLeft, Pin, PinOff, Plus, Search, Sun, X } from "lucide-react";
+import { ArrowRight, House, Monitor, Moon, PanelLeft, Pin, PinOff, Plus, Search, Settings, Sun, X } from "lucide-react";
 import { STATE_LABELS, isAttention, type Task, type TaskState } from "@solus/core";
 import {
   DropdownMenu,
@@ -152,6 +152,15 @@ function TopNav() {
         </span>
         <span className="flex-1 text-[0.9375rem] font-semibold tracking-tight">Solus</span>
         <ThemeMenu />
+        <button
+          type="button"
+          onClick={() => useSolus.getState().setOverlay("settings")}
+          aria-label="Settings"
+          title="Settings (⌘,)"
+          className="-mr-1 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <Settings className="size-4" />
+        </button>
       </div>
 
       <NavItem icon={<House />} label="Home" onClick={goHome} />

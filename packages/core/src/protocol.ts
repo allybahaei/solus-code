@@ -34,6 +34,10 @@ export const RUNNER_METHODS = [
   "writeTerminal",
   "resizeTerminal",
   "getDiff",
+  "listOpenTargets",
+  "openWorkspace",
+  "getSettings",
+  "saveSettings",
   "merge",
   "openPullRequest",
 ] as const satisfies readonly (keyof Runner)[];

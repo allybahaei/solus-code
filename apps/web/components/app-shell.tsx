@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { Composer, COMPOSER_ID } from "@/components/chat/composer";
+import { CommandPalette, ShortcutSheet } from "@/components/command-palette";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { TabBar } from "@/components/chat/tab-bar";
 import { TaskBar } from "@/components/chat/task-bar";
 import { Transcript } from "@/components/chat/transcript";
@@ -16,7 +18,7 @@ import { MergeDialog } from "@/components/review/merge-dialog";
 import { ChecksView } from "@/components/checks/checks-view";
 import { MAIN_CHAT } from "@solus/core";
 import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/review-view";
-import { startTask } from "@/lib/actions";
+import { loadSettings, openInEditor, startTask } from "@/lib/actions";
 import { loadReviewPrefs, useReview } from "@/lib/review-store";
 import { useMediaQuery } from "@/lib/hooks";
 import { getConnection, getRunner } from "@/lib/runner";
@@ -34,7 +36,9 @@ export function AppShell() {
 
   useEffect(() => connectRunner(getRunner(), getConnection()), []);
   useEffect(() => loadReviewPrefs(), []);
+  useEffect(() => void loadSettings(), []);
   useKeyboard();
+  useTaskLinks();
 
   return (
     <div className="flex h-dvh min-h-0 w-full overflow-hidden">
@@ -55,6 +59,9 @@ export function AppShell() {
       {wide && rightPaneOpen && hasTask && <RightPane />}
       <NewTaskDialog />
       <MergeDialog />
+      <CommandPalette />
+      <ShortcutSheet />
+      <SettingsDialog />
       <Notice />
     </div>
   );
@@ -197,13 +204,30 @@ function Notice() {
  * R review, V mark the file in view as viewed, M merge, P open PR, Esc back
  * to the chat. Ignored while typing or while a dialog is open.
  */
+/** A notification opens its task through the address, as #task=id. */
+function useTaskLinks() {
+  useEffect(() => {
+    const onHash = () => {
+      const id = new URLSearchParams(window.location.hash.slice(1)).get("task");
+      if (id && useSolus.getState().tasks[id]) useSolus.getState().open(id);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+}
+
 function useKeyboard() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === "b") {
-        e.preventDefault();
-        useSolus.getState().toggleSidebar();
-        return;
+      if (e.metaKey || e.ctrlKey) {
+        const { overlay, setOverlay, toggleSidebar } = useSolus.getState();
+        const toggle = (to: "palette" | "settings") => setOverlay(overlay === to ? null : to);
+        const action = e.key === "k" ? () => toggle("palette") : e.key === "," ? () => toggle("settings") : e.metaKey && e.key === "b" ? toggleSidebar : null;
+        if (action) {
+          e.preventDefault();
+          action();
+          return;
+        }
       }
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
@@ -263,6 +287,12 @@ function useKeyboard() {
             return true;
           case "n":
             s.setNewTaskOpen(true);
+            return true;
+          case "?":
+            s.setOverlay("shortcuts");
+            return true;
+          case "o":
+            if (task) void openInEditor(task.id);
             return true;
           case "/":
             if (s.query === null) s.setQuery("");

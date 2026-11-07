@@ -4,6 +4,8 @@ import type {
   CallMessage,
   CreateTaskInput,
   Diff,
+  OpenTarget,
+  Settings,
   MergeOptions,
   PROptions,
   Runner,
@@ -106,6 +108,10 @@ export class RemoteRunner implements Runner {
   writeTerminal = (id: string, data: string) => this.run("writeTerminal", id, data);
   resizeTerminal = (id: string, cols: number, rows: number) => this.run("resizeTerminal", id, cols, rows);
   getDiff = (id: string) => this.call<Diff>("getDiff", id);
+  listOpenTargets = () => this.call<OpenTarget[]>("listOpenTargets");
+  openWorkspace = (id: string, target: string) => this.call<void>("openWorkspace", id, target);
+  getSettings = () => this.call<Settings>("getSettings");
+  saveSettings = (changes: Partial<Settings>) => this.call<Settings>("saveSettings", changes);
   merge = (id: string, opts: MergeOptions) => this.run("merge", id, opts);
   openPullRequest = (id: string, opts: PROptions) => this.call<{ url: string }>("openPullRequest", id, opts);
 

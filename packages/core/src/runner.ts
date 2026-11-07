@@ -52,6 +52,25 @@ export interface SetupStatus {
   tools: SetupCheck[];
 }
 
+/** An app that can open a task's folder. */
+export interface OpenTarget {
+  id: string;
+  label: string;
+  kind: "editor" | "terminal" | "finder";
+}
+
+/** The person's preferences, shared by all their repos. */
+export interface Settings {
+  /** Play a sound when a task needs them. */
+  sound: boolean;
+  /** Show a system notification when a task needs them. */
+  notifications: boolean;
+  /** The OpenTarget that `O` uses. */
+  editor?: string;
+}
+
+export const DEFAULT_SETTINGS: Settings = { sound: true, notifications: true };
+
 /** Everything a UI needs to draw, taken at one instant. */
 export interface RunnerSnapshot {
   repo: RepoInfo;
@@ -117,6 +136,13 @@ export interface Runner {
   writeTerminal(id: string, data: string): Promise<void>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<void>;
   getDiff(id: string): Promise<Diff>;
+  /** Apps on this machine that can open a task's folder. */
+  listOpenTargets(): Promise<OpenTarget[]>;
+  /** Opens the task's worktree in one of those apps. */
+  openWorkspace(id: string, target: string): Promise<void>;
+  getSettings(): Promise<Settings>;
+  /** Changes some settings and resolves with all of them. */
+  saveSettings(changes: Partial<Settings>): Promise<Settings>;
   merge(id: string, opts: MergeOptions): Promise<void>;
   openPullRequest(id: string, opts: PROptions): Promise<{ url: string }>;
   /** Returns an unsubscribe function. */

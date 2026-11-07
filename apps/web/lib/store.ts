@@ -1,11 +1,12 @@
 "use client";
 
 import { create } from "zustand";
-import { MAIN_CHAT, chatsOf, type AgentMessage, type Chat, type DiffFile, type RepoInfo, type Runner, type RunnerSnapshot, type SetupStatus, type Task } from "@solus/core";
+import { DEFAULT_SETTINGS, MAIN_CHAT, chatsOf, type AgentMessage, type Chat, type DiffFile, type OpenTarget, type RepoInfo, type Runner, type RunnerSnapshot, type Settings, type SetupStatus, type Task } from "@solus/core";
 import { navOrder } from "./groups";
 
 /** What the center pane shows when the right pane doesn't fit. */
 export type CenterView = "chat" | "changes" | "terminal" | "run";
+export type Overlay = "palette" | "shortcuts" | "settings";
 
 interface SolusState {
   status: "connecting" | "ready" | "error";
@@ -46,6 +47,11 @@ interface SolusState {
   /** Whether the changes/terminal pane is shown on wide screens. */
   rightPaneOpen: boolean;
   sidebarOpen: boolean;
+  /** The one overlay showing, if any. */
+  overlay: Overlay | null;
+  /** Apps that can open a worktree, once asked for. */
+  openTargets: OpenTarget[] | null;
+  settings: Settings;
 
   open: (id: string) => void;
   openChat: (taskId: string, chatId: string) => void;
@@ -62,6 +68,7 @@ interface SolusState {
   rename: (id: string, title: string) => void;
   toggleRightPane: () => void;
   toggleSidebar: () => void;
+  setOverlay: (overlay: Overlay | null) => void;
 }
 
 const RENAMES_KEY = "solus.renames";
@@ -166,6 +173,9 @@ export const useSolus = create<SolusState>()((set, get) => ({
   closedChats: {},
   rightPaneOpen: true,
   sidebarOpen: true,
+  overlay: null,
+  openTargets: null,
+  settings: DEFAULT_SETTINGS,
 
   open: (id) =>
     set((s) => ({
@@ -235,6 +245,7 @@ export const useSolus = create<SolusState>()((set, get) => ({
     }),
   toggleRightPane: () => set((s) => ({ rightPaneOpen: !s.rightPaneOpen })),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setOverlay: (overlay) => set({ overlay }),
 }));
 
 /** A runner reached over a connection that can drop, such as RemoteRunner. */

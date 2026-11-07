@@ -12,7 +12,12 @@ const webApp = join(here, "../../apps/web");
 const { version, license } = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
 const { dependencies } = JSON.parse(readFileSync(join(here, "../cli/package.json"), "utf8"));
 
-// Both are public. Without them the app needs no account, as for anyone building from source.
+try {
+  process.loadEnvFile(join(here, ".env.local"));
+} catch {
+  // No local settings, as for anyone building from source.
+}
+// Both are public. Without them the app needs no account.
 const { SOLUS_SUPABASE_URL: url, SOLUS_SUPABASE_PUBLISHABLE_KEY: key } = process.env;
 const auth = url && key ? { url, key } : null;
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
 import { ClaudeStream, summarizeTool, type ClaudeLine } from "./claude-stream";
-import { BRIDGE, ToolServer } from "./tool-server";
+import { BRIDGE, bridgeEnv, ToolServer } from "./tool-server";
 
 export interface ClaudeCodeOptions {
   /** The executable. Tests point this at a stand-in. */
@@ -23,6 +23,7 @@ const ONE_DAY_MS = "86400000";
 /** Commands that run without asking. Everything else comes to the user. */
 export const ALLOWED_TOOLS = [
   "mcp__solus__ask_user",
+  "mcp__solus__set_branch_name",
   "Bash(git status:*)",
   "Bash(git diff:*)",
   "Bash(git log:*)",
@@ -46,6 +47,7 @@ export const ALLOWED_TOOLS = [
 const SYSTEM_PROMPT = [
   "You are running inside Solus, in a git worktree made for this task. A person reviews your diff when you finish.",
   "When you need a decision from them, call the ask_user tool, then end your turn. Their answer arrives as your next message.",
+  "Before your first edit in a new task, call the set_branch_name tool, once.",
   "Leave your changes in the working tree. Solus handles committing and merging.",
 ].join(" ");
 
@@ -96,6 +98,7 @@ class ClaudeSession implements AgentSession {
     }
     this.tools = new ToolServer({
       onAsk: (question) => emit({ type: "ask", question }),
+      onBranchName: (name) => emit({ type: "branch_name", name }),
       onApproval: (socket, args) => this.onApproval(socket, args),
     });
     this.launch(this.tools);
@@ -147,14 +150,14 @@ class ClaudeSession implements AgentSession {
   }
 
   private launch(tools: ToolServer) {
-    const { cwd, session, prompt } = this.start;
+    const { cwd, session, prompt, options } = this.start;
     const sessionId = session ?? randomUUID();
     const mcpConfig = join(tools.dir, "mcp.json");
     writeFileSync(
       mcpConfig,
       JSON.stringify({
         mcpServers: {
-          solus: { command: process.execPath, args: [BRIDGE], env: { SOLUS_SOCKET: tools.socketPath } },
+          solus: { command: process.execPath, args: [BRIDGE], env: { ...bridgeEnv(), SOLUS_SOCKET: tools.socketPath } },
         },
       }),
     );
@@ -168,7 +171,9 @@ class ClaudeSession implements AgentSession {
         "--verbose",
         "--include-partial-messages",
         ...(session ? ["--resume", session] : ["--session-id", sessionId]),
-        "--permission-mode", "acceptEdits",
+        "--permission-mode", options?.plan ? "plan" : "acceptEdits",
+        ...(options?.model ? ["--model", options.model] : []),
+        ...(options?.effort ? ["--effort", options.effort] : []),
         "--mcp-config", mcpConfig,
         "--permission-prompt-tool", "mcp__solus__approve",
         // One argument each: these contain spaces.

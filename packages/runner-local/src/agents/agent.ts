@@ -1,4 +1,4 @@
-import type { TaskError } from "@solus/core";
+import type { ChatOptions, TaskError } from "@solus/core";
 
 /** What an agent reports. Each adapter turns its tool's output into these. */
 export type AgentEvent =
@@ -12,6 +12,8 @@ export type AgentEvent =
   | { type: "session"; id: string }
   /** The session to resume doesn't exist, so it needs a fresh start. The session is over. */
   | { type: "session_lost" }
+  /** The agent's name for this task's branch. */
+  | { type: "branch_name"; name: string }
   /** The agent has a question. The reply arrives through send(). */
   | { type: "ask"; question: string }
   /** The agent wants to run something and is waiting for approve() or send(). */
@@ -31,7 +33,13 @@ export interface AgentStart {
   session?: string;
   /** Extra environment, such as the task's port. */
   env?: NodeJS.ProcessEnv;
+  /** Model, effort and plan mode, where the agent supports them. */
+  options?: ChatOptions;
 }
+
+/** For agents with no plan mode of their own. */
+export const PLAN_ONLY =
+  "Plan mode: read what you need, then propose a plan. Don't change any files or run anything that does. Wait for the person to approve it.";
 
 /** One running conversation with an agent. */
 export interface AgentSession {

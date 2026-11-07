@@ -1,18 +1,21 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArchiveRestore, ArrowUp, CircleAlert, MessageCircleQuestion, Paperclip, Play, ShieldQuestion, X } from "lucide-react";
-import { MAIN_CHAT, type AgentKind, type Task } from "@solus/core";
+import { ArchiveRestore, ArrowUp, CircleAlert, ClipboardList, Clock, MessageCircleQuestion, Paperclip, Pencil, Play, ShieldQuestion, X } from "lucide-react";
+import { MAIN_CHAT, chatsOf, type AgentKind, type ChatOptions, type QueuedMessage, type Task } from "@solus/core";
 import { AgentPicker } from "@/components/agent-picker";
+import { ModelPicker } from "@/components/chat/model-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { answerApproval, attachFile, restoreTask, sendMessage, startTask } from "@/lib/actions";
+import { answerApproval, archiveTask, attachFile, editQueued, listFiles, newChat, restoreTask, sendMessage, setChatOptions, startTask, stopTask } from "@/lib/actions";
+import { insertMention, matchScore, menuTrigger } from "@/lib/composer";
+import { useReview } from "@/lib/review-store";
 import { useSolus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const PLACEHOLDER: Record<Task["state"], string> = {
   idle: "What should this chat work on?",
-  working: "Add guidance while the agent works…",
+  working: "Queue a message for when the agent finishes…",
   needs_input: "Answer the agent…",
   stuck: "Nudge the agent: what should it try?",
   ready_for_review: "Request changes…",
@@ -35,6 +38,74 @@ export function Composer({ task, chatId }: { task: Task; chatId: string }) {
   const [agent, setAgent] = useState<AgentKind>(task.agent);
 
   const approvalId = task.approval?.id ?? "";
+  const chat = chatsOf(task).find((c) => c.id === chatId);
+  const options: ChatOptions = chat?.options ?? {};
+  const setOptions = (next: ChatOptions) => void setChatOptions(task.id, next, chatId);
+  const togglePlan = () => {
+    const { plan, ...rest } = options;
+    setOptions(plan ? rest : { ...rest, plan: true });
+  };
+
+  const box = useRef<HTMLTextAreaElement>(null);
+  const [caret, setCaret] = useState(0);
+  const [files, setFiles] = useState<string[] | null>(null);
+  const [picked, setPicked] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const trigger = dismissed ? null : menuTrigger(text, caret);
+
+  const commands: MenuItem[] = [
+    { id: "plan", label: "/plan", hint: options.plan ? "Turn plan mode off" : "Plan first, change nothing yet", run: togglePlan },
+    { id: "new", label: "/new", hint: "New chat in this workspace", run: () => void newChat(task.id, agent) },
+    { id: "review", label: "/review", hint: "Review the diff", run: () => useReview.getState().setView(task.id, "review") },
+    { id: "stop", label: "/stop", hint: "Stop the agent", run: () => void stopTask(task.id, chatId) },
+    { id: "archive", label: "/archive", hint: "Archive this task", run: () => void archiveTask(task.id) },
+    { id: "help", label: "/help", hint: "Keyboard shortcuts", run: () => useSolus.getState().setOverlay("shortcuts") },
+  ];
+  const ranked = <T,>(items: T[], name: (item: T) => string, query: string) =>
+    items
+      .flatMap((item) => {
+        const score = matchScore(query, name(item));
+        return score === null ? [] : [{ item, score }];
+      })
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 8)
+      .map((m) => m.item);
+  const menu: MenuItem[] =
+    trigger?.kind === "command"
+      ? ranked(commands, (c) => c.label.slice(1), trigger.query)
+      : trigger?.kind === "file"
+        ? ranked(files ?? [], (f) => f, trigger.query).map((path) => ({ id: path, label: path, run: () => mention(trigger.start, path) }))
+        : [];
+  const current = Math.min(picked, Math.max(0, menu.length - 1));
+
+  const mention = (start: number, path: string) => {
+    const next = insertMention(text, caret, start, path);
+    setText(next.text);
+    setCaret(next.caret);
+    requestAnimationFrame(() => box.current?.setSelectionRange(next.caret, next.caret));
+  };
+
+  const choose = (item: MenuItem | undefined) => {
+    if (!item) return;
+    if (trigger?.kind === "command") {
+      setText("");
+      setCaret(0);
+    }
+    item.run();
+    setPicked(0);
+    box.current?.focus();
+  };
+
+  const track = (el: HTMLTextAreaElement) => {
+    setCaret(el.selectionStart);
+    setPicked(0);
+    setDismissed(false);
+    // Asked for at the first @, and again each time, since agents add files.
+    const before = el.value.slice(0, el.selectionStart);
+    if (/(?:^|\s)@[^\s@]*$/.test(before) && (files === null || before.endsWith("@"))) {
+      void listFiles(task.id).then((list) => list && setFiles(list));
+    }
+  };
 
   const [attached, setAttached] = useState<string[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -119,11 +190,35 @@ export function Composer({ task, chatId }: { task: Task; chatId: string }) {
               task.state === "stuck" && "border-state-stuck/50",
             )}
           >
+            {chat?.queued && chat.queued.length > 0 && <Queue task={task} chatId={chatId} queued={chat.queued} />}
+            {menu.length > 0 && (
+              <ul role="listbox" aria-label={trigger?.kind === "file" ? "Files" : "Commands"} className="no-scrollbar max-h-64 overflow-y-auto border-b p-1.5">
+                {menu.map((item, i) => (
+                  <li key={item.id} role="option" aria-selected={i === current}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onMouseMove={() => setPicked(i)}
+                      onClick={() => choose(item)}
+                      className={cn("flex h-8 w-full items-center gap-3 rounded-md px-2 text-left text-sm", i === current && "bg-accent")}
+                    >
+                      <span className="min-w-0 truncate font-mono text-[0.8125rem]">{item.label}</span>
+                      {item.hint && <span className="ml-auto shrink-0 text-xs text-muted-foreground">{item.hint}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <Textarea
               id={COMPOSER_ID}
+              ref={box}
               value={text}
               disabled={disabled}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                track(e.target);
+              }}
+              onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
               onPaste={(e) => {
                 if (e.clipboardData.files.length > 0 && canAttach) {
                   e.preventDefault();
@@ -131,6 +226,21 @@ export function Composer({ task, chatId }: { task: Task; chatId: string }) {
                 }
               }}
               onKeyDown={(e) => {
+                if (menu.length > 0) {
+                  const moves: Record<string, () => void> = {
+                    ArrowDown: () => setPicked(Math.min(menu.length - 1, current + 1)),
+                    ArrowUp: () => setPicked(Math.max(0, current - 1)),
+                    Enter: () => choose(menu[current]),
+                    Tab: () => choose(menu[current]),
+                    Escape: () => setDismissed(true),
+                  };
+                  const move = moves[e.key];
+                  if (move && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    move();
+                    return;
+                  }
+                }
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   send();
@@ -161,6 +271,19 @@ export function Composer({ task, chatId }: { task: Task; chatId: string }) {
             <div className="flex items-center justify-between px-2.5 pb-2.5">
               <span className="flex items-center gap-1">
                 <AgentPicker value={agent} onChange={setAgent} disabled={disabled} />
+                <ModelPicker agent={agent} options={options} onChange={setOptions} />
+                <Button
+                  size="sm"
+                  variant={options.plan ? "secondary" : "ghost"}
+                  disabled={disabled}
+                  onClick={togglePlan}
+                  aria-pressed={!!options.plan}
+                  title="Plan mode: the agent proposes a plan and changes nothing until you turn this off"
+                  className="h-7 gap-1 px-2 text-xs font-normal"
+                >
+                  <ClipboardList className="size-3.5" />
+                  Plan
+                </Button>
                 <input
                   ref={fileInput}
                   type="file"
@@ -190,6 +313,51 @@ export function Composer({ task, chatId }: { task: Task; chatId: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+interface MenuItem {
+  id: string;
+  label: string;
+  hint?: string;
+  run: () => void;
+}
+
+/** Messages waiting for the agent. They can be changed or removed until they go. */
+function Queue({ task, chatId, queued }: { task: Task; chatId: string; queued: QueuedMessage[] }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  return (
+    <ul aria-label="Queued messages" className="space-y-1 border-b p-2">
+      {queued.map((q) => (
+        <li key={q.id} className="flex items-center gap-2 rounded-md bg-muted/50 py-1 pr-1 pl-2 text-sm">
+          <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-label="Waiting" />
+          {editing === q.id ? (
+            <input
+              autoFocus
+              defaultValue={q.text}
+              aria-label="Edit queued message"
+              onBlur={(e) => {
+                void editQueued(task.id, q.id, e.currentTarget.value, chatId);
+                setEditing(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") setEditing(null);
+              }}
+              className="min-w-0 flex-1 bg-transparent outline-none"
+            />
+          ) : (
+            <span className="min-w-0 flex-1 truncate">{q.text}</span>
+          )}
+          <button type="button" onClick={() => setEditing(q.id)} aria-label="Edit" className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+            <Pencil className="size-3.5" />
+          </button>
+          <button type="button" onClick={() => void editQueued(task.id, q.id, "", chatId)} aria-label="Remove" className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+            <X className="size-3.5" />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 

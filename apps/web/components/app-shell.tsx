@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { Composer, COMPOSER_ID } from "@/components/chat/composer";
+import { CommandPalette, ShortcutSheet } from "@/components/command-palette";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { TabBar } from "@/components/chat/tab-bar";
 import { TaskBar } from "@/components/chat/task-bar";
 import { Transcript } from "@/components/chat/transcript";
@@ -16,8 +18,8 @@ import { MergeDialog } from "@/components/review/merge-dialog";
 import { ChecksView } from "@/components/checks/checks-view";
 import { MAIN_CHAT } from "@solus/core";
 import { REVIEW_SUMMARY_ID, ReviewView, sortFiles } from "@/components/review/review-view";
-import { startTask } from "@/lib/actions";
-import { loadReviewPrefs, useReview } from "@/lib/review-store";
+import { openInEditor, startTask } from "@/lib/actions";
+import { loadReviewPrefs, reviewOf, useReview } from "@/lib/review-store";
 import { useMediaQuery } from "@/lib/hooks";
 import { getConnection, getRunner } from "@/lib/runner";
 import { activeChatId, connectRunner, taskInChat, useSolus, type CenterView } from "@/lib/store";
@@ -29,29 +31,37 @@ export function AppShell() {
   const showList = useSolus((s) => s.showList);
   const wide = useMediaQuery("(min-width: 1024px)");
   const rightPaneOpen = useSolus((s) => s.rightPaneOpen);
+  const sidebarOpen = useSolus((s) => s.sidebarOpen);
+  const hasTask = useSolus((s) => s.activeId !== null);
+  const terminalBig = useSolus((s) => s.terminalBig) && wide && hasTask;
 
   useEffect(() => connectRunner(getRunner(), getConnection()), []);
   useEffect(() => loadReviewPrefs(), []);
   useKeyboard();
+  useTaskLinks();
 
   return (
     <div className="flex h-dvh min-h-0 w-full overflow-hidden">
       <aside
         className={cn(
-          "min-h-0 w-full flex-col border-r bg-card md:flex md:w-72 md:shrink-0",
+          "min-h-0 w-full flex-col border-r bg-card md:w-72 md:shrink-0",
           showList ? "flex" : "hidden",
+          sidebarOpen ? "md:flex" : "md:hidden",
         )}
       >
         <Sidebar />
       </aside>
-      <main className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", showList ? "hidden" : "flex")}>
+      <main className={cn("min-h-0 min-w-0 flex-1 flex-col", showList ? "hidden" : "flex", terminalBig ? "md:hidden" : "md:flex")}>
         <ConnectionBanner />
         <TabBar />
         <ActiveTask wide={wide} />
       </main>
-      {wide && rightPaneOpen && <RightPane />}
+      {wide && (rightPaneOpen || terminalBig) && hasTask && <RightPane big={terminalBig} />}
       <NewTaskDialog />
       <MergeDialog />
+      <CommandPalette />
+      <ShortcutSheet />
+      <SettingsDialog />
       <Notice />
     </div>
   );
@@ -114,7 +124,7 @@ function ActiveTask({ wide }: { wide: boolean }) {
           <ReviewView key={task.id} task={task} files={files} narrow={false} />
         ) : (
           <>
-            <Transcript key={chatId} task={inChat} messages={messages} newChat={chatId !== MAIN_CHAT} />
+            <Transcript key={`transcript/${task.id}/${chatId}`} task={inChat} messages={messages} newChat={chatId !== MAIN_CHAT} />
             <Composer key={`${task.id}/${chatId}`} task={inChat} chatId={chatId} />
           </>
         ))}
@@ -125,17 +135,19 @@ function ActiveTask({ wide }: { wide: boolean }) {
   );
 }
 
-function RightPane() {
+function RightPane({ big }: { big: boolean }) {
   const task = useSolus((s) => (s.activeId ? s.tasks[s.activeId] : undefined));
   const files = useSolus((s) => (s.activeId ? s.diffs[s.activeId] : undefined)) ?? EMPTY;
   return (
-    <aside className="flex w-[19rem] shrink-0 flex-col border-l xl:w-[21rem]">
+    <aside className={cn("flex shrink-0 flex-col border-l", big ? "min-w-0 flex-1" : "w-[19rem] xl:w-[21rem]")}>
       {task ? (
         <>
           <TaskBar task={task} />
-          <div className="flex min-h-0 flex-1 flex-col">
-            <Changes key={task.id} task={task} files={files} />
-          </div>
+          {!big && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <Changes key={task.id} task={task} files={files} />
+            </div>
+          )}
           <div className="flex min-h-0 flex-1 flex-col border-t">
             <BottomPane key={task.id} task={task} />
           </div>
@@ -194,9 +206,32 @@ function Notice() {
  * R review, V mark the file in view as viewed, M merge, P open PR, Esc back
  * to the chat. Ignored while typing or while a dialog is open.
  */
+/** A notification opens its task through the address, as #task=id. */
+function useTaskLinks() {
+  useEffect(() => {
+    const onHash = () => {
+      const id = new URLSearchParams(window.location.hash.slice(1)).get("task");
+      if (id && useSolus.getState().tasks[id]) useSolus.getState().open(id);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+}
+
 function useKeyboard() {
+  const commentIndex = useRef(-1);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        const { overlay, setOverlay, toggleSidebar } = useSolus.getState();
+        const toggle = (to: "palette" | "settings") => setOverlay(overlay === to ? null : to);
+        const action = e.key === "k" ? () => toggle("palette") : e.key === "," ? () => toggle("settings") : e.metaKey && e.key === "b" ? toggleSidebar : null;
+        if (action) {
+          e.preventDefault();
+          action();
+          return;
+        }
+      }
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return;
@@ -215,8 +250,26 @@ function useKeyboard() {
         if (next) r.showFile(task.id, next);
       };
 
+      /** Moves to the next or previous draft comment. */
+      const stepComment = (delta: 1 | -1) => {
+        if (!task) return;
+        const comments = [...reviewOf(r, task.id).comments].sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+        if (comments.length === 0) return;
+        commentIndex.current = (commentIndex.current + delta + comments.length) % comments.length;
+        const comment = comments[commentIndex.current];
+        if (!comment) return;
+        r.showFile(task.id, comment.path);
+        requestAnimationFrame(() => document.querySelector(`[data-comment="${CSS.escape(comment.id)}"]`)?.scrollIntoView({ block: "center" }));
+      };
+
       const handled = (() => {
         switch (e.key) {
+          case ".":
+            if (reviewing) stepComment(1);
+            return reviewing;
+          case ",":
+            if (reviewing) stepComment(-1);
+            return reviewing;
           case "j":
           case "ArrowDown":
             if (reviewing) stepFile(1);
@@ -255,6 +308,15 @@ function useKeyboard() {
             return true;
           case "n":
             s.setNewTaskOpen(true);
+            return true;
+          case "?":
+            s.setOverlay("shortcuts");
+            return true;
+          case "t":
+            if (task) s.toggleTerminalBig();
+            return !!task;
+          case "o":
+            if (task) void openInEditor(task.id);
             return true;
           case "/":
             if (s.query === null) s.setQuery("");

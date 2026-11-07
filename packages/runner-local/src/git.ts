@@ -12,13 +12,13 @@ interface ExecError extends Error {
 }
 
 /** Runs git and returns stdout. Exit codes in `okCodes` count as success. */
-export async function git(cwd: string, args: string[], okCodes: number[] = [0]): Promise<string> {
+export async function git(cwd: string, args: string[], okCodes: number[] = [0], extraEnv: NodeJS.ProcessEnv = {}): Promise<string> {
   try {
     const { stdout } = await exec("git", args, {
       cwd,
       maxBuffer: 64 * 1024 * 1024,
       // Never stop to ask for credentials: nobody is there to answer.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", LC_ALL: "C", ...extraEnv },
     });
     return stdout;
   } catch (err) {

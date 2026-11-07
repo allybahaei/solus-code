@@ -8,6 +8,9 @@ import {
   type DiffFile,
   type MergeOptions,
   type MessageRole,
+  type ModelOption,
+  type OpenTarget,
+  type Settings,
   type PROptions,
   type Runner,
   type RunnerEvent,
@@ -18,6 +21,7 @@ import {
   type Task,
   type TaskSources,
   type TaskState,
+  DEFAULT_SETTINGS,
 } from "@solus/core";
 import {
   MOCK_BASE_BRANCH,
@@ -76,6 +80,7 @@ const CHUNK_INTERVAL_MS = 45;
 
 /** Scripted, in-memory Runner for the prototype. No git, no agents. */
 export class MockRunner implements Runner {
+  private settings: Settings = { ...DEFAULT_SETTINGS };
   private readonly records = new Map<string, TaskRecord>();
   private readonly listeners = new Set<(event: RunnerEvent) => void>();
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
@@ -266,6 +271,52 @@ export class MockRunner implements Runner {
     rec.scriptGen++;
     this.term(rec, `${ansi.yellow("^C")}\r\n`);
     this.setState(rec, "stuck", { error: { message: "Stopped by you" } });
+  }
+
+  async restoreCheckpoint(): Promise<void> {}
+
+  async readFile(id: string, path: string): Promise<string> {
+    return this.get(id).files.get(path)?.patch ?? "";
+  }
+
+  async writeFile(): Promise<void> {}
+
+  async openSignIn(): Promise<void> {}
+
+  async listFiles(id: string): Promise<string[]> {
+    return [...this.get(id).files.keys()];
+  }
+
+  async listModels(agent: AgentKind): Promise<ModelOption[]> {
+    return agent === "claude-code" || agent === "codex"
+      ? [
+          { id: "large", label: "Large", efforts: ["low", "medium", "high"] },
+          { id: "small", label: "Small", efforts: [] },
+        ]
+      : [];
+  }
+
+  async setChatOptions(): Promise<void> {}
+
+  async editQueued(): Promise<void> {}
+
+  async listOpenTargets(): Promise<OpenTarget[]> {
+    return [
+      { id: "vscode", label: "VS Code", kind: "editor" },
+      { id: "terminal", label: "Terminal", kind: "terminal" },
+      { id: "finder", label: "Finder", kind: "finder" },
+    ];
+  }
+
+  async openWorkspace(): Promise<void> {}
+
+  async getSettings(): Promise<Settings> {
+    return { ...this.settings };
+  }
+
+  async saveSettings(changes: Partial<Settings>): Promise<Settings> {
+    this.settings = { ...this.settings, ...changes };
+    return { ...this.settings };
   }
 
   async getDiff(id: string): Promise<Diff> {

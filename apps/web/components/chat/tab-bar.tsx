@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Archive, AudioLines, ChevronLeft, History, Link2, PanelRight, Pencil, Plus, X } from "lucide-react";
+import { Archive, AudioLines, ChevronLeft, ExternalLink, History, Link2, PanelRight, Pencil, Plus, X } from "lucide-react";
 import { chatsOf, type Chat, type Task } from "@solus/core";
 import { AGENTS, AgentIcon } from "@/components/agent-picker";
 import { DeleteTask } from "@/components/chat/task-bar";
+import { SidebarToggle } from "@/components/sidebar";
 import { StateDot } from "@/components/state-dot";
 import {
   DropdownMenu,
@@ -13,7 +14,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { archiveTask, newChat } from "@/lib/actions";
+import { archiveTask, loadOpenTargets, newChat, openWorkspace } from "@/lib/actions";
 import { activeChatId, chatTitle, displayTitle, useSolus, visibleChats } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -26,10 +27,16 @@ export function TabBar() {
   const tasks = useSolus((s) => s.tasks);
   const repo = useSolus((s) => s.repo);
   const setShowList = useSolus((s) => s.setShowList);
+  const sidebarOpen = useSolus((s) => s.sidebarOpen);
   const anyWorking = Object.values(tasks).some((t) => t.state === "working");
 
   return (
-    <div className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2">
+    <div data-titlebar className="flex h-12 shrink-0 items-stretch gap-1 border-b bg-card pr-2 desktop:h-10">
+      {!sidebarOpen && (
+        <div className="hidden items-center pl-2 md:flex desktop:pl-20">
+          <SidebarToggle />
+        </div>
+      )}
       <button
         type="button"
         className={cn(iconButton, "my-auto ml-1 md:hidden")}
@@ -51,12 +58,13 @@ export function TabBar() {
       {task ? <ChatTabs task={task} /> : <div className="flex-1" />}
 
       <div className="flex shrink-0 items-center gap-0.5">
+        {task && <OpenMenu task={task} />}
         {task && <HistoryMenu task={task} />}
         <CopyLinkButton />
         {task && <ArchiveButton task={task} />}
         {task && <DeleteTask key={task.id} task={task} className={iconButton} />}
         {task && <AgentStack task={task} />}
-        <PaneToggle />
+        {task && <PaneToggle />}
       </div>
     </div>
   );
@@ -213,6 +221,26 @@ function ChatTab({ task, chat, active, closable }: { task: Task; chat: Chat; act
 }
 
 /** Closed chat tabs in this workspace. Closing a tab keeps the conversation. */
+function OpenMenu({ task }: { task: Task }) {
+  const targets = useSolus((s) => s.openTargets);
+  if (targets?.length === 0) return null;
+  return (
+    <DropdownMenu onOpenChange={(open) => void (open && loadOpenTargets())}>
+      <DropdownMenuTrigger className={cn(iconButton, "hidden md:grid")} aria-label="Open in" title="Open in… (O)">
+        <ExternalLink />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Open worktree in</DropdownMenuLabel>
+        {(targets ?? []).map((t) => (
+          <DropdownMenuItem key={t.id} onSelect={() => void openWorkspace(task.id, t.id)}>
+            {t.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function HistoryMenu({ task }: { task: Task }) {
   const closedIds = useSolus((s) => s.closedChats[task.id]);
   const renames = useSolus((s) => s.renames);

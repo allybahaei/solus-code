@@ -4,6 +4,10 @@ import type {
   CallMessage,
   CreateTaskInput,
   Diff,
+  ChatOptions,
+  ModelOption,
+  OpenTarget,
+  Settings,
   MergeOptions,
   PROptions,
   Runner,
@@ -105,7 +109,19 @@ export class RemoteRunner implements Runner {
   stopAction = (id: string) => this.run("stopAction", id);
   writeTerminal = (id: string, data: string) => this.run("writeTerminal", id, data);
   resizeTerminal = (id: string, cols: number, rows: number) => this.run("resizeTerminal", id, cols, rows);
-  getDiff = (id: string) => this.call<Diff>("getDiff", id);
+  getDiff = (id: string, opts?: { ignoreWhitespace?: boolean }) => this.call<Diff>("getDiff", id, opts);
+  restoreCheckpoint = (id: string, messageId: string) => this.run("restoreCheckpoint", id, messageId);
+  readFile = (id: string, path: string) => this.call<string>("readFile", id, path);
+  writeFile = (id: string, path: string, content: string) => this.run("writeFile", id, path, content);
+  openSignIn = (check: string) => this.run("openSignIn", check);
+  listFiles = (id: string) => this.call<string[]>("listFiles", id);
+  listModels = (agent: AgentKind) => this.call<ModelOption[]>("listModels", agent);
+  setChatOptions = (id: string, options: ChatOptions, chat?: string) => this.run("setChatOptions", id, options, chat);
+  editQueued = (id: string, queuedId: string, text: string, chat?: string) => this.run("editQueued", id, queuedId, text, chat);
+  listOpenTargets = () => this.call<OpenTarget[]>("listOpenTargets");
+  openWorkspace = (id: string, target: string) => this.run("openWorkspace", id, target);
+  getSettings = () => this.call<Settings>("getSettings");
+  saveSettings = (changes: Partial<Settings>) => this.call<Settings>("saveSettings", changes);
   merge = (id: string, opts: MergeOptions) => this.run("merge", id, opts);
   openPullRequest = (id: string, opts: PROptions) => this.call<{ url: string }>("openPullRequest", id, opts);
 

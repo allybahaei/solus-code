@@ -1,4 +1,4 @@
-import { compareTasks, type Task } from "@solus/core";
+import { compareTasks, isAttention, type Task } from "@solus/core";
 
 export interface SidebarSections {
   pinned: Task[];
@@ -8,11 +8,34 @@ export interface SidebarSections {
   archived: Task[];
 }
 
-export function sidebarSections(tasks: Iterable<Task>, pinned: readonly string[], query = ""): SidebarSections {
+export type SidebarFilter = "all" | "attention" | "working" | "review";
+export type SidebarSort = "attention" | "recent" | "created";
+export interface SidebarView {
+  filter: SidebarFilter;
+  sort: SidebarSort;
+}
+
+export const DEFAULT_VIEW: SidebarView = { filter: "all", sort: "attention" };
+
+const FILTERS: Record<SidebarFilter, (t: Task) => boolean> = {
+  all: () => true,
+  attention: (t) => isAttention(t.state),
+  working: (t) => t.state === "working",
+  review: (t) => t.state === "ready_for_review",
+};
+
+const SORTS: Record<SidebarSort, (a: Task, b: Task) => number> = {
+  attention: compareTasks,
+  recent: (a, b) => b.lastActivityAt - a.lastActivityAt,
+  created: (a, b) => b.createdAt - a.createdAt,
+};
+
+export function sidebarSections(tasks: Iterable<Task>, pinned: readonly string[], query = "", view: SidebarView = DEFAULT_VIEW): SidebarSections {
   const q = query.trim().toLowerCase();
   const all = [...tasks]
     .filter((t) => !q || t.title.toLowerCase().includes(q) || t.branch.toLowerCase().includes(q))
-    .sort(compareTasks);
+    .filter(FILTERS[view.filter])
+    .sort(SORTS[view.sort]);
   const live = all.filter((t) => !t.archivedAt);
   const isPinned = (t: Task) => pinned.includes(t.id);
   return {
@@ -24,7 +47,7 @@ export function sidebarSections(tasks: Iterable<Task>, pinned: readonly string[]
 }
 
 /** Tasks in sidebar order, as J/K walks them. */
-export function navOrder(tasks: Iterable<Task>, pinned: readonly string[], showMerged: boolean, query = ""): Task[] {
-  const s = sidebarSections(tasks, pinned, query);
+export function navOrder(tasks: Iterable<Task>, pinned: readonly string[], showMerged: boolean, query = "", view: SidebarView = DEFAULT_VIEW): Task[] {
+  const s = sidebarSections(tasks, pinned, query, view);
   return [...s.pinned, ...s.workspaces, ...(showMerged ? s.merged : [])];
 }

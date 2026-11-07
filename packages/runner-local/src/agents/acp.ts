@@ -2,8 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import { createInterface } from "node:readline";
-import type { AgentAdapter, AgentEvent, AgentSession, AgentStart } from "./agent";
-import { BRIDGE, ToolServer } from "./tool-server";
+import { PLAN_ONLY, type AgentAdapter, type AgentEvent, type AgentSession, type AgentStart } from "./agent";
+import { BRIDGE, bridgeEnv, ToolServer } from "./tool-server";
 
 export interface AcpOptions {
   /** Shown in errors, such as "OpenCode". */
@@ -102,7 +102,7 @@ class AcpSession implements AgentSession {
     private readonly options: AcpOptions,
   ) {
     this.stallMs = options.stallMs ?? STALL_MS;
-    this.tools = new ToolServer({ onAsk: (question) => emit({ type: "ask", question }) });
+    this.tools = new ToolServer({ onAsk: (question) => emit({ type: "ask", question }), onBranchName: (name) => emit({ type: "branch_name", name }) });
     this.child = spawn(options.command, options.args, {
       cwd: start.cwd,
       env: { ...process.env, ...start.env, ...options.env },
@@ -161,7 +161,10 @@ class AcpSession implements AgentSession {
         name: "solus",
         command: process.execPath,
         args: [BRIDGE],
-        env: [{ name: "SOLUS_SOCKET", value: this.tools.socketPath }],
+        env: [
+          ...Object.entries(bridgeEnv()).map(([name, value]) => ({ name, value })),
+          { name: "SOLUS_SOCKET", value: this.tools.socketPath },
+        ],
       },
     ];
     const { cwd, session, prompt } = this.start;
@@ -198,7 +201,7 @@ class AcpSession implements AgentSession {
     try {
       const result = await this.call("session/prompt", {
         sessionId: this.sessionId,
-        prompt: [{ type: "text", text }],
+        prompt: [{ type: "text", text: this.start.options?.plan ? `${PLAN_ONLY}\n\n${text}` : text }],
       });
       if (this.over) return;
       this.closeText();

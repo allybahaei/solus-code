@@ -17,6 +17,7 @@ pnpm lint && pnpm typecheck && pnpm test
 - `packages/runner-local`: the real Runner: git worktrees, real diffs, saved state in `~/.solus`
 - `packages/daemon`: local server exposing a Runner over WebSocket (127.0.0.1, token required)
 - `packages/cli`: the `solus-code` command, which bundles all of this with the built UI
+- `packages/desktop`: the Mac app, which runs the same daemon and UI in Electron, with a window per repo
 - `packages/runner-client`: the browser's `RemoteRunner`, which talks to the daemon
 
 ## Using it
@@ -34,6 +35,14 @@ Not on npm yet. To build the package from this repo:
 ```bash
 pnpm package
 ```
+
+To build the Mac app and its `.dmg`, which aren't signed yet, into `packages/desktop/release`:
+
+```bash
+pnpm --filter @solus/desktop dist
+```
+
+Builds need no account unless `SOLUS_SUPABASE_URL` and `SOLUS_SUPABASE_PUBLISHABLE_KEY` are set, in the environment or in `packages/desktop/.env.local`, and then the app asks for a GitHub sign-in once. The Supabase project needs its GitHub provider on, and `http://127.0.0.1:47831/callback` in its redirect URLs.
 
 ## Contributing
 

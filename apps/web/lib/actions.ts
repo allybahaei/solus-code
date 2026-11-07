@@ -3,17 +3,19 @@
 import {
   MAIN_CHAT,
   type AgentKind,
+  type ChatOptions,
   type MergeOptions,
   type MergeStrategy,
   type PROptions,
   type PullRequestCheck,
   type PullRequestComment,
   type PullRequestStatus,
+  type Settings,
   type TaskSource,
 } from "@solus/core";
 import { useReview } from "@/lib/review-store";
 import { getRunner } from "./runner";
-import { activeChatId, useSolus } from "./store";
+import { activeChatId, useSolus, type PullRequestHealth } from "./store";
 
 /** Runs a runner call; a failure shows as a notice instead of throwing. */
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -31,6 +33,8 @@ export async function installAgent(agent: AgentKind) {
   if (setup) useSolus.setState({ setup });
 }
 
+export const openSignIn = (check: string) => attempt(() => getRunner().openSignIn(check));
+
 export async function recheckSetup() {
   const setup = await attempt(() => getRunner().checkSetup());
   if (setup) useSolus.setState({ setup });
@@ -42,6 +46,25 @@ export async function readPullRequest(id: string): Promise<PullRequestStatus | s
     return await getRunner().getPullRequest(id);
   } catch (err) {
     return message(err);
+  }
+}
+
+/** Checks every open pull request, for the sidebar. GitHub is slow, so this runs in the background. */
+export async function refreshPullRequests() {
+  const { tasks } = useSolus.getState();
+  const open = Object.values(tasks).filter((t) => t.pullRequest && t.state !== "merged" && !t.archivedAt);
+  for (const task of open) {
+    const status = await readPullRequest(task.id);
+    if (typeof status === "string") continue;
+    const states = status.checks.map((c) => c.state);
+    const health: PullRequestHealth = status.conflicts
+      ? "conflict"
+      : states.includes("failed")
+        ? "failed"
+        : states.includes("pending")
+          ? "pending"
+          : "passed";
+    useSolus.setState((s) => ({ prHealth: { ...s.prHealth, [task.id]: health } }));
   }
 }
 
@@ -72,6 +95,47 @@ export async function attachFile(id: string, file: File): Promise<string | undef
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return attempt(() => getRunner().attachFile(id, file.name, btoa(binary)));
+}
+
+/** Asks once: installed apps don't change while the app is open. */
+export async function loadOpenTargets() {
+  if (useSolus.getState().openTargets) return;
+  const openTargets = await attempt(() => getRunner().listOpenTargets());
+  if (openTargets) useSolus.setState({ openTargets });
+}
+
+export const openWorkspace = (id: string, target: string) => attempt(() => getRunner().openWorkspace(id, target));
+
+/** Opens the task in the chosen editor, or the first one found. */
+export async function openInEditor(id: string) {
+  await loadOpenTargets();
+  const { openTargets, settings } = useSolus.getState();
+  const target = openTargets?.find((t) => t.id === settings.editor) ?? openTargets?.find((t) => t.kind === "editor") ?? openTargets?.[0];
+  if (target) await openWorkspace(id, target.id);
+}
+
+export const readFile = (id: string, path: string) => attempt(() => getRunner().readFile(id, path));
+export const writeFile = (id: string, path: string, content: string) => attempt(() => getRunner().writeFile(id, path, content));
+export const restoreCheckpoint = (id: string, messageId: string) => attempt(() => getRunner().restoreCheckpoint(id, messageId));
+
+/** The diff with whitespace-only changes left out. */
+export const readQuietDiff = (id: string) => attempt(async () => (await getRunner().getDiff(id, { ignoreWhitespace: true })).files);
+
+export const listFiles = (id: string) => attempt(() => getRunner().listFiles(id));
+
+/** Asks once per agent: it can start a process. */
+export async function loadModels(agent: AgentKind) {
+  if (useSolus.getState().models[agent]) return;
+  const models = await attempt(() => getRunner().listModels(agent));
+  if (models) useSolus.setState((s) => ({ models: { ...s.models, [agent]: models } }));
+}
+
+export const setChatOptions = (id: string, options: ChatOptions, chat: string) => attempt(() => getRunner().setChatOptions(id, options, chat));
+export const editQueued = (id: string, queuedId: string, text: string, chat: string) => attempt(() => getRunner().editQueued(id, queuedId, text, chat));
+
+export async function saveSettings(changes: Partial<Settings>) {
+  useSolus.setState((s) => ({ settings: { ...s.settings, ...changes } }));
+  await attempt(() => getRunner().saveSettings(changes));
 }
 
 export const startTask = (id: string) => attempt(() => getRunner().startTask(id));

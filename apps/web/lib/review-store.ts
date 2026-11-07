@@ -30,6 +30,7 @@ interface ReviewState {
   view: Record<string, TaskView>;
   reviews: Record<string, TaskReview>;
   diffMode: DiffMode;
+  hideWhitespace: boolean;
   /** A file the review should scroll to, set from the changes list. */
   scrollTarget: { taskId: string; path: string; nonce: number } | null;
   /** The file currently in view, highlighted in the changes list. */
@@ -47,12 +48,14 @@ interface ReviewState {
   setSummary: (taskId: string, summary: string) => void;
   clearReview: (taskId: string) => void;
   setDiffMode: (mode: DiffMode) => void;
+  toggleWhitespace: () => void;
   openMerge: (taskId: string, mode?: MergeMode) => void;
   closeMerge: () => void;
 }
 
 const EMPTY: TaskReview = { comments: [], viewed: [], summary: "" };
 const DIFF_MODE_KEY = "solus.diffMode";
+const WHITESPACE_KEY = "solus.hideWhitespace";
 const MERGE_MODE_KEY = "solus.mergeMode";
 
 function read<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
@@ -87,6 +90,7 @@ export const useReview = create<ReviewState>()((set) => {
     view: {},
     reviews: {},
     diffMode: "unified",
+  hideWhitespace: false,
     scrollTarget: null,
     inView: null,
     merge: null,
@@ -114,6 +118,11 @@ export const useReview = create<ReviewState>()((set) => {
       write(DIFF_MODE_KEY, diffMode);
       set({ diffMode });
     },
+    toggleWhitespace: () =>
+      set((s) => {
+        write(WHITESPACE_KEY, String(!s.hideWhitespace));
+        return { hideWhitespace: !s.hideWhitespace };
+      }),
     openMerge: (taskId, mode) => set((s) => ({ merge: { taskId, mode: mode ?? s.lastMergeMode } })),
     closeMerge: () => set({ merge: null }),
   };
@@ -123,6 +132,7 @@ export const useReview = create<ReviewState>()((set) => {
 export function loadReviewPrefs() {
   useReview.setState({
     diffMode: read(DIFF_MODE_KEY, ["unified", "split"] as const, "unified"),
+    hideWhitespace: read(WHITESPACE_KEY, ["true", "false"] as const, "false") === "true",
     lastMergeMode: read(MERGE_MODE_KEY, ["pr", "merge"] as const, "pr"),
   });
 }

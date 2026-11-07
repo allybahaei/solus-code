@@ -1,6 +1,6 @@
 import type { Diff, DiffFile } from "./diff";
 import type { AgentMessage, RunnerEvent } from "./events";
-import type { AgentKind, Chat, CreateTaskInput, PullRequestStatus, Task, TaskSources } from "./task";
+import type { AgentKind, Chat, ChatOptions, CreateTaskInput, ModelOption, PullRequestStatus, Task, TaskSources } from "./task";
 
 export type MergeStrategy = "merge" | "squash" | "rebase";
 
@@ -52,6 +52,25 @@ export interface SetupStatus {
   tools: SetupCheck[];
 }
 
+/** An app that can open a task's folder. */
+export interface OpenTarget {
+  id: string;
+  label: string;
+  kind: "editor" | "terminal" | "finder";
+}
+
+/** The person's preferences, shared by all their repos. */
+export interface Settings {
+  /** Play a sound when a task needs them. */
+  sound: boolean;
+  /** Show a system notification when a task needs them. */
+  notifications: boolean;
+  /** The OpenTarget that `O` uses. */
+  editor?: string;
+}
+
+export const DEFAULT_SETTINGS: Settings = { sound: true, notifications: true };
+
 /** Everything a UI needs to draw, taken at one instant. */
 export interface RunnerSnapshot {
   repo: RepoInfo;
@@ -78,6 +97,8 @@ export interface Runner {
   snapshot(): Promise<RunnerSnapshot>;
   /** Checks installs and logins. Costs no agent usage. */
   checkSetup(): Promise<SetupStatus>;
+  /** Opens a terminal running an agent's or tool's own sign-in, by its setup check id. */
+  openSignIn(check: string): Promise<void>;
   /** Installs an agent's official package, on the user's say-so. Resolves with fresh checks. */
   installAgent(agent: AgentKind): Promise<SetupStatus>;
   listTasks(): Promise<Task[]>;
@@ -116,7 +137,27 @@ export interface Runner {
   /** Types into the task's shell, starting it if needed. Empty data just starts it. */
   writeTerminal(id: string, data: string): Promise<void>;
   resizeTerminal(id: string, cols: number, rows: number): Promise<void>;
-  getDiff(id: string): Promise<Diff>;
+  getDiff(id: string, opts?: { ignoreWhitespace?: boolean }): Promise<Diff>;
+  /** Puts the worktree back as it was before a message. Later changes are lost. */
+  restoreCheckpoint(id: string, messageId: string): Promise<void>;
+  readFile(id: string, path: string): Promise<string>;
+  /** Saves a file in the task's worktree. */
+  writeFile(id: string, path: string, content: string): Promise<void>;
+  /** Files in the task's worktree, or the repo before it has one, for mentioning. */
+  listFiles(id: string): Promise<string[]>;
+  /** Models an agent can run. Empty when Solus can't choose one for it. */
+  listModels(agent: AgentKind): Promise<ModelOption[]>;
+  /** Sets how a chat's agent runs, from its next message on. */
+  setChatOptions(id: string, options: ChatOptions, chat?: string): Promise<void>;
+  /** Rewrites a waiting message. Empty text removes it. */
+  editQueued(id: string, queuedId: string, text: string, chat?: string): Promise<void>;
+  /** Apps on this machine that can open a task's folder. */
+  listOpenTargets(): Promise<OpenTarget[]>;
+  /** Opens the task's worktree in one of those apps. */
+  openWorkspace(id: string, target: string): Promise<void>;
+  getSettings(): Promise<Settings>;
+  /** Changes some settings and resolves with all of them. */
+  saveSettings(changes: Partial<Settings>): Promise<Settings>;
   merge(id: string, opts: MergeOptions): Promise<void>;
   openPullRequest(id: string, opts: PROptions): Promise<{ url: string }>;
   /** Returns an unsubscribe function. */

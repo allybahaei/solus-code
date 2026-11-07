@@ -11,4 +11,6 @@ next-env.d.ts
 .DS_Store
 .vercel
 packages/cli/web/
+packages/desktop/stage/
+packages/desktop/release/
 *.tgz

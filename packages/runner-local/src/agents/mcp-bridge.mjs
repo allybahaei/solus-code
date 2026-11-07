@@ -18,6 +18,15 @@ const tools = [
     },
   },
   {
+    name: "set_branch_name",
+    description: "Name this task's git branch after what it does. Call it once, before your first edit.",
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string", description: "Two to five words in kebab-case, such as fix-login-redirect." } },
+      required: ["name"],
+    },
+  },
+  {
     name: "approve",
     description: "Internal: decides whether a tool call may run.",
     inputSchema: {

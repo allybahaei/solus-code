@@ -9,6 +9,9 @@ const THEME_KEY = "solus.theme";
 /** Runs before first paint, so a saved theme never flashes the other one. */
 export const THEME_SCRIPT = `try{var t=localStorage.getItem("${THEME_KEY}");if(t==="light"||t==="dark")document.documentElement.classList.add(t)}catch(e){}`;
 
+/** The Mac app's top bars double as its title bar, so the page needs to know. */
+export const DESKTOP_SCRIPT = `if(/ Electron\\//.test(navigator.userAgent))document.documentElement.classList.add("desktop")`;
+
 const listeners = new Set<() => void>();
 
 export function subscribeTheme(cb: () => void) {

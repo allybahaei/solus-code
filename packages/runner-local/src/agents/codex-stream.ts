@@ -8,20 +8,24 @@ interface CodexItem {
   type: string;
   text?: string;
   command?: string;
-  aggregated_output?: string;
-  exit_code?: number | null;
-  changes?: { path: string; kind: string }[];
+  aggregatedOutput?: string | null;
+  exitCode?: number | null;
+  status?: string;
+  changes?: { path: string; kind: unknown }[];
   server?: string;
   tool?: string;
   arguments?: unknown;
 }
 
-/** The fields of `codex exec --json` lines that Solus reads. */
-export interface CodexLine {
-  type: string;
-  thread_id?: string;
-  item?: CodexItem;
-  error?: { message?: string };
+/** The fields of `codex app-server` notifications that Solus reads. */
+export interface CodexNotification {
+  method: string;
+  params?: {
+    item?: CodexItem;
+    itemId?: string;
+    delta?: string;
+    turn?: { status: string; error?: { message: string } | null };
+  };
 }
 
 /** Codex wraps commands as: /bin/zsh -lc "..."; show what it actually ran. */
@@ -35,42 +39,36 @@ const forTerminal = (text: string) => {
   return cut.replace(/\r?\n/g, "\r\n");
 };
 
-/** Turns one Codex turn's JSONL into agent events. */
+/** Turns `codex app-server` notifications into agent events. One per session. */
 export class CodexStream {
-  /** Set once the turn has finished, whichever way. */
-  finished = false;
+  /** Messages that arrived in pieces, so their last item isn't repeated. */
+  private readonly streamed = new Set<string>();
 
-  /** `turn` keeps message ids unique, because Codex's item ids restart each turn. */
-  constructor(
-    private readonly cwd: string,
-    private readonly turn: number,
-  ) {}
+  constructor(private readonly cwd: string) {}
 
-  push(line: CodexLine): AgentEvent[] {
-    switch (line.type) {
-      case "thread.started":
-        return line.thread_id ? [{ type: "session", id: line.thread_id }] : [];
-      case "item.started":
-        return line.item ? this.started(line.item) : [];
-      case "item.completed":
-        return line.item ? this.completed(line.item) : [];
-      case "turn.completed":
-        this.finished = true;
-        return [];
-      case "turn.failed":
-        this.finished = true;
-        return [{ type: "error", error: { message: line.error?.message ?? "Codex stopped with an error." } }];
+  push({ method, params }: CodexNotification): AgentEvent[] {
+    switch (method) {
+      case "item/agentMessage/delta":
+        if (!params?.itemId) return [];
+        this.streamed.add(params.itemId);
+        return [{ type: "text", id: params.itemId, chunk: params.delta ?? "", done: false }];
+      case "item/started":
+        return params?.item ? this.started(params.item) : [];
+      case "item/completed":
+        return params?.item ? this.completed(params.item) : [];
+      case "turn/completed":
+        return this.turnCompleted(params?.turn);
       default:
-        // "error" lines repeat what turn.failed says, or are retries Codex recovers from.
+        // "error" notifications repeat what turn/completed says, or are retries Codex recovers from.
         return [];
     }
   }
 
   private started(item: CodexItem): AgentEvent[] {
-    if (item.type === "command_execution") {
+    if (item.type === "commandExecution") {
       return [{ type: "tool", tool: "Bash", text: unwrapCommand(item.command ?? "").split("\n")[0] ?? "" }];
     }
-    if (item.type === "mcp_tool_call" && item.server !== "solus") {
+    if (item.type === "mcpToolCall" && item.server !== "solus") {
       return [{ type: "tool", tool: `${item.server}.${item.tool}`, text: JSON.stringify(item.arguments ?? {}).slice(0, 200) }];
     }
     return [];
@@ -78,19 +76,30 @@ export class CodexStream {
 
   private completed(item: CodexItem): AgentEvent[] {
     switch (item.type) {
-      case "agent_message":
-        return [{ type: "text", id: `${this.turn}-${item.id}`, chunk: item.text ?? "", done: true }];
-      case "command_execution": {
-        const failed = item.exit_code ? `(exit ${item.exit_code})\n` : "";
-        const data = forTerminal(`$ ${unwrapCommand(item.command ?? "")}\n${item.aggregated_output ?? ""}${failed}`);
+      case "agentMessage": {
+        const chunk = this.streamed.delete(item.id) ? "" : (item.text ?? "");
+        return [{ type: "text", id: item.id, chunk, done: true }];
+      }
+      case "commandExecution": {
+        const failed = item.exitCode ? `(exit ${item.exitCode})\n` : "";
+        const data = forTerminal(`$ ${unwrapCommand(item.command ?? "")}\n${item.aggregatedOutput ?? ""}${failed}`);
         return [{ type: "terminal", data }, { type: "files_changed" }];
       }
-      case "file_change": {
+      case "fileChange": {
+        if (item.status !== "completed") return [];
         const paths = (item.changes ?? []).map((c) => relative(this.cwd, c.path) || c.path);
         return [{ type: "tool", tool: "Edit", text: paths.join(", ") }, { type: "files_changed" }];
       }
       default:
         return [];
     }
+  }
+
+  private turnCompleted(turn: NonNullable<CodexNotification["params"]>["turn"]): AgentEvent[] {
+    if (turn?.status === "completed") return [{ type: "turn_end" }];
+    if (turn?.status === "failed") {
+      return [{ type: "error", error: { message: turn.error?.message ?? "Codex stopped with an error." } }];
+    }
+    return []; // Interrupted: Solus stopped it.
   }
 }

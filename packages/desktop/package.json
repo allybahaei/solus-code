@@ -1,0 +1,42 @@
+{
+  "name": "@solus/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Solus Mac app.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dist": "node build.mjs && electron-builder --mac dmg",
+    "lint": "eslint src build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@solus/core": "workspace:*",
+    "@solus/daemon": "workspace:*",
+    "@solus/runner-local": "workspace:*",
+    "@types/node": "^22",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.25"
+  },
+  "build": {
+    "appId": "so.solus.code",
+    "productName": "Solus",
+    "asar": false,
+    "directories": {
+      "app": "stage",
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png",
+      "identity": null
+    },
+    "dmg": {
+      "title": "Solus",
+      "artifactName": "Solus-${version}-${arch}.${ext}"
+    }
+  }
+}

@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 import type { AgentMessage, Task } from "@solus/core";
 import { Markdown } from "@/components/markdown";
+import { restoreCheckpoint } from "@/lib/actions";
+import { splitMentions } from "@/lib/composer";
+import { useTypedText } from "@/lib/typewriter";
 import { cn } from "@/lib/utils";
 
 type Item = { kind: "message"; message: AgentMessage } | { kind: "tools"; id: string; calls: AgentMessage[] };
@@ -26,6 +29,8 @@ function toItems(messages: AgentMessage[]): Item[] {
 export function Transcript({ task, messages, newChat = false }: { task: Task; messages: AgentMessage[]; newChat?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  // Messages already here when the chat opens are history, so they don't replay.
+  const [history] = useState(() => new Set(messages.map((m) => m.id)));
   const items = toItems(messages);
   const lastText = messages.at(-1)?.text.length ?? 0;
 
@@ -41,6 +46,11 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
     if (el) el.scrollTop = el.scrollHeight;
   }, [task.id]);
 
+  const followTyping = () => {
+    const el = scrollRef.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  };
+
   return (
     <div
       ref={scrollRef}
@@ -48,7 +58,7 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
         const el = e.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
       }}
-      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+      className="no-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
     >
       <div className="w-full space-y-5 px-4 py-6 text-sm leading-relaxed">
         {items.length === 0 && (
@@ -67,15 +77,21 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
           item.kind === "tools" ? (
             <ToolGroup key={item.id} calls={item.calls} live={task.state === "working" && i === items.length - 1} />
           ) : item.message.role === "user" ? (
-            <div key={item.message.id} className="flex justify-end">
+            <div key={item.message.id} className="group flex items-center justify-end gap-2">
+              {task.checkpoints?.[item.message.id] && !task.archivedAt && task.state !== "merged" && (
+                <RestoreButton taskId={task.id} messageId={item.message.id} busy={task.state === "working"} />
+              )}
               <div className="max-w-[85%] rounded-2xl bg-user-bubble px-5 py-3.5 whitespace-pre-wrap">
-                {item.message.text}
+                <UserText text={item.message.text} />
               </div>
             </div>
           ) : (
-            <div key={item.message.id}>
-              <Markdown text={item.message.text} />
-            </div>
+            <AgentText
+              key={item.message.id}
+              text={item.message.text}
+              fromStart={!history.has(item.message.id)}
+              onType={followTyping}
+            />
           ),
         )}
         {task.state === "working" && (
@@ -87,6 +103,46 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
       </div>
     </div>
   );
+}
+
+/** Restoring discards work, so the first click only asks. */
+function RestoreButton({ taskId, messageId, busy }: { taskId: string; messageId: string; busy: boolean }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onBlur={() => setAsking(false)}
+      onClick={() => {
+        if (asking) void restoreCheckpoint(taskId, messageId);
+        setAsking(!asking);
+      }}
+      title={busy ? "Stop the agent to restore files" : "Put the files back as they were before this message. Changes since then are lost."}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs opacity-0 outline-none group-hover:opacity-100 focus-visible:opacity-100 disabled:hidden",
+        asking ? "bg-state-stuck-soft text-state-stuck opacity-100" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      <RotateCcw className="size-3.5" />
+      {asking ? "Lose later changes?" : "Restore"}
+    </button>
+  );
+}
+
+function UserText({ text }: { text: string }) {
+  return splitMentions(text).map((part, i) =>
+    part.mention ? (
+      <span key={i} className="rounded bg-foreground/10 px-1 py-0.5 font-mono text-[0.8125rem]">
+        {part.text.slice(1)}
+      </span>
+    ) : (
+      part.text
+    ),
+  );
+}
+
+function AgentText({ text, fromStart, onType }: { text: string; fromStart: boolean; onType: () => void }) {
+  return <Markdown text={useTypedText(text, fromStart, onType)} />;
 }
 
 function ToolGroup({ calls, live }: { calls: AgentMessage[]; live: boolean }) {

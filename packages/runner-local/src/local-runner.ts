@@ -22,8 +22,12 @@ import {
   type RunnerSnapshot,
   type SetupStatus,
   type Chat,
+  type ChatOptions,
   type MergeStrategy,
+  type ModelOption,
+  type OpenTarget,
   type PullRequestStatus,
+  type Settings,
   type Task,
   type TaskError,
   type TaskSources,
@@ -31,7 +35,10 @@ import {
 } from "@solus/core";
 import { RunningAction } from "./action";
 import type { AgentAdapter, AgentEvent, AgentSession } from "./agents/agent";
+import { listModels } from "./agents/models";
+import { forgetCheckpoints, restoreCheckpoint, saveCheckpoint } from "./checkpoint";
 import { readDiff } from "./diff";
+import { readWorkspaceFile, writeWorkspaceFile } from "./files";
 import { branchExists, git, readRepo } from "./git";
 import {
   addWorktree,
@@ -42,6 +49,9 @@ import {
   removeWorktree,
   startMerge,
 } from "./merge";
+import { listOpenTargets, openFolder } from "./open";
+import { readSettings, writeSettings } from "./settings";
+import { openSignIn } from "./sign-in";
 import { checkSetup, installAgent, type SetupCommands } from "./setup";
 import { mergePullRequest, readCheckLog, readPullRequest } from "./pull-request";
 import { ghJson, listSources, resolveSource } from "./source";
@@ -72,6 +82,12 @@ interface Run {
   launching?: Promise<void>;
   /** What the agent was last started with, in case it has to start over. */
   lastMessage?: string;
+  /** The options the running session started with. */
+  startedWith?: string;
+  /** The user message on its way to the agent, for its checkpoint. */
+  sending?: string;
+  /** Files were restored behind this chat's back, so its next message says so. */
+  restored?: boolean;
 }
 
 interface Rec extends StoredTask {
@@ -102,6 +118,16 @@ const titleFrom = (message: string) => {
 /** Where attached files go. Inside the worktree so agents can read them, but never committed. */
 const ATTACHMENTS = ".solus-attachments";
 
+/** The most files a mention search looks through. */
+const MAX_FILES = 20_000;
+
+/** How many checkpoints each task keeps. Older ones can no longer be restored. */
+const MAX_CHECKPOINTS = 100;
+
+const RESTORED_NOTE = "Note: the person restored the files to an earlier point, so your edits since then are gone. Check the current files before relying on them.";
+
+const optionsKey = (chat: Chat) => JSON.stringify(chat.options ?? {});
+
 /** Each task gets a block of ports, so apps in parallel worktrees don't collide. */
 const FIRST_TASK_PORT = 41000;
 const PORTS_PER_TASK = 10;
@@ -122,6 +148,8 @@ export class LocalRunner implements Runner {
   private readonly records = new Map<string, Rec>();
   private readonly listeners = new Set<(event: RunnerEvent) => void>();
   private nextMessage = 1;
+  /** Set once the repo's lock is released, after which another runner may own the state. */
+  private disposed = false;
   /** Worktrees are created one at a time, since they all write to the same .git. */
   private creating: Promise<unknown> = Promise.resolve();
   /** Merges run one at a time, since they move shared branches. */
@@ -133,6 +161,7 @@ export class LocalRunner implements Runner {
     private readonly worktrees: string,
     private readonly adapterFor: (agent: AgentKind) => AgentAdapter,
     private readonly commands: SetupCommands,
+    private readonly settingsFile: string,
   ) {}
 
   /** Opens a repo, restoring its saved tasks. Rejects if it isn't usable. */
@@ -147,6 +176,7 @@ export class LocalRunner implements Runner {
       join(dir, "worktrees", key),
       adapterFor,
       commands,
+      join(dir, "settings.json"),
     );
     runner.store.lock();
     await runner.restore();
@@ -155,6 +185,7 @@ export class LocalRunner implements Runner {
 
   /** Stops every agent. Tasks keep their saved state. */
   dispose(): void {
+    this.disposed = true;
     for (const rec of this.records.values()) {
       rec.abort?.abort();
       this.endSession(rec);
@@ -181,6 +212,10 @@ export class LocalRunner implements Runner {
 
   checkSetup(): Promise<SetupStatus> {
     return checkSetup(this.commands);
+  }
+
+  openSignIn(check: string): Promise<void> {
+    return openSignIn(check, this.commands);
   }
 
   async installAgent(agent: AgentKind): Promise<SetupStatus> {
@@ -252,7 +287,7 @@ export class LocalRunner implements Runner {
     this.requireActive(rec);
     if (rec.task.state !== "idle") throw new Error(`Task ${id} is already started (${rec.task.state}).`);
     const run = this.runOf(rec);
-    this.addMessage(rec, "user", rec.task.prompt);
+    run.sending = this.addMessage(rec, "user", rec.task.prompt);
     this.setChat(rec, run, "working");
     run.launching = this.launch(rec, run, rec.task.prompt);
   }
@@ -282,6 +317,14 @@ export class LocalRunner implements Runner {
     if (state === "idle") throw new Error(`Start task ${id} before messaging it.`);
     if (state === "merged") throw new Error(`Task ${id} is merged.`);
     const run = this.runOf(rec, opts.chat);
+    const sameAgent = !opts.agent || opts.agent === run.chat.agent;
+
+    // Busy: it waits where the person can see, edit or remove it.
+    if (run.chat.state === "working" && sameAgent) {
+      (run.chat.queued ??= []).push({ id: `q_${randomBytes(6).toString("hex")}`, text: message });
+      this.updated(rec);
+      return;
+    }
 
     if (opts.agent && opts.agent !== run.chat.agent) {
       // A different agent can't continue this one's session.
@@ -292,10 +335,97 @@ export class LocalRunner implements Runner {
       delete run.agentSession;
     }
     if (run.chat.title === NEW_CHAT) run.chat.title = titleFrom(message);
-    this.addMessage(rec, "user", message, undefined, run);
+    run.sending = this.addMessage(rec, "user", message, undefined, run);
     if (run.chat.state !== "working") this.setChat(rec, run, "working");
-    if (run.session) run.session.send(message);
-    else run.launching = this.launch(rec, run, message);
+    await this.deliver(rec, run, message);
+  }
+
+  async listFiles(id: string): Promise<string[]> {
+    const { worktree } = this.get(id);
+    const cwd = worktree && existsSync(worktree) ? worktree : this.repo.path;
+    const out = await git(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"]);
+    return out.split("\n").filter(Boolean).slice(0, MAX_FILES);
+  }
+
+  listModels(agent: AgentKind): Promise<ModelOption[]> {
+    return listModels(agent, this.commands.codex);
+  }
+
+  async setChatOptions(id: string, options: ChatOptions, chat?: string): Promise<void> {
+    const rec = this.get(id);
+    this.runOf(rec, chat).chat.options = options;
+    this.updated(rec);
+  }
+
+  async editQueued(id: string, queuedId: string, text: string, chat?: string): Promise<void> {
+    const rec = this.get(id);
+    const run = this.runOf(rec, chat);
+    const queued = run.chat.queued ?? [];
+    const message = queued.find((q) => q.id === queuedId);
+    if (!message) throw new Error("That message has already gone to the agent.");
+    if (text.trim()) message.text = text;
+    else run.chat.queued = queued.filter((q) => q.id !== queuedId);
+    this.updated(rec);
+  }
+
+  /** Sends to the running session, or starts one if there's none or its options changed. */
+  private async deliver(rec: Rec, run: Run, text: string) {
+    // Before the first message there's no worktree yet: launch takes that checkpoint.
+    await this.checkpoint(rec, run);
+    const message = run.restored ? `${RESTORED_NOTE}\n\n${text}` : text;
+    delete run.restored;
+    if (run.session && run.startedWith === optionsKey(run.chat)) {
+      run.session.send(message);
+      return;
+    }
+    run.session?.stop();
+    delete run.session;
+    run.launching = this.launch(rec, run, message);
+  }
+
+  /** Worth losing rather than holding up the agent, so a failure is only a note. */
+  private async checkpoint(rec: Rec, run: Run) {
+    const messageId = run.sending;
+    if (!messageId || !rec.worktree || !existsSync(rec.worktree)) return;
+    delete run.sending;
+    try {
+      const commit = await saveCheckpoint(rec.worktree, rec.task.id, messageId);
+      const kept = Object.entries({ ...rec.task.checkpoints, [messageId]: commit }).slice(-MAX_CHECKPOINTS);
+      rec.task.checkpoints = Object.fromEntries(kept);
+      this.updated(rec);
+    } catch (err) {
+      this.term(rec, `\x1b[33mCouldn't save a checkpoint: ${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`);
+    }
+  }
+
+  restoreCheckpoint(id: string, messageId: string): Promise<void> {
+    return this.oneAtATime(async () => {
+      const rec = this.get(id);
+      this.requireActive(rec);
+      const commit = rec.task.checkpoints?.[messageId];
+      if (!commit) throw new Error("That checkpoint is no longer available.");
+      if (!rec.worktree || !existsSync(rec.worktree)) throw new Error("This task's worktree is gone.");
+      if ([...rec.runs.values()].some((r) => r.chat.state === "working")) throw new Error("Stop the agent before restoring files.");
+      await restoreCheckpoint(rec.worktree, commit);
+      for (const run of rec.runs.values()) run.restored = true;
+      this.addMessage(rec, "tool", "Files back to before this message", "Restored", this.runOf(rec));
+      await this.refreshDiff(rec);
+    });
+  }
+
+  async readFile(id: string, path: string): Promise<string> {
+    return readWorkspaceFile(this.requireWorktree(this.get(id)), path);
+  }
+
+  async writeFile(id: string, path: string, content: string): Promise<void> {
+    const rec = this.get(id);
+    writeWorkspaceFile(this.requireWorktree(rec), path, content);
+    await this.refreshDiff(rec);
+  }
+
+  private requireWorktree(rec: Rec): string {
+    if (!rec.worktree || !existsSync(rec.worktree)) throw new Error("This task has no workspace right now.");
+    return rec.worktree;
   }
 
   async answerApproval(id: string, approvalId: string, allow: boolean): Promise<void> {
@@ -393,6 +523,7 @@ export class LocalRunner implements Runner {
       await this.launched(rec);
       // Only ever a branch and worktree Solus made for this task.
       await removeWorkspace(this.repo.path, rec.worktree, rec.task.branch, !rec.task.branch.startsWith("solus/"));
+      await forgetCheckpoints(this.repo.path, id);
       this.records.delete(id);
       this.store.forget(id);
       this.save();
@@ -445,14 +576,33 @@ export class LocalRunner implements Runner {
     rec.shell?.resize(rec.size);
   }
 
-  async getDiff(id: string): Promise<Diff> {
+  async getDiff(id: string, opts: { ignoreWhitespace?: boolean } = {}): Promise<Diff> {
     const rec = this.get(id);
+    const live = opts.ignoreWhitespace && rec.worktree && existsSync(rec.worktree);
     return {
       taskId: id,
       baseBranch: rec.task.baseBranch,
       branch: rec.task.branch,
-      files: structuredClone(rec.files),
+      files: live ? await readDiff(rec.worktree as string, rec.task.baseBranch, this.copiedFiles(), { ignoreWhitespace: true }) : structuredClone(rec.files),
     };
+  }
+
+  async listOpenTargets(): Promise<OpenTarget[]> {
+    return listOpenTargets();
+  }
+
+  async openWorkspace(id: string, target: string): Promise<void> {
+    const { worktree } = this.get(id);
+    if (!worktree || !existsSync(worktree)) throw new Error("Start the task first: it has no workspace yet.");
+    await openFolder(target, worktree);
+  }
+
+  async getSettings(): Promise<Settings> {
+    return readSettings(this.settingsFile);
+  }
+
+  async saveSettings(changes: Partial<Settings>): Promise<Settings> {
+    return writeSettings(this.settingsFile, changes);
   }
 
   merge(id: string, opts: MergeOptions): Promise<void> {
@@ -752,6 +902,8 @@ export class LocalRunner implements Runner {
   }
 
   private save() {
+    // Work still finishing after dispose mustn't overwrite the next runner's state.
+    if (this.disposed) return;
     this.store.saveTasks(
       [...this.records.values()].map(({ task, worktree, setupDone, runs, existingBranch }) => ({
         task,
@@ -825,7 +977,7 @@ export class LocalRunner implements Runner {
     if (lead.error) rec.task.error = lead.error;
   }
 
-  private addMessage(rec: Rec, role: MessageRole, text: string, tool?: string, run?: Run) {
+  private addMessage(rec: Rec, role: MessageRole, text: string, tool?: string, run?: Run): string {
     const at = this.touch(rec);
     const id = `msg_${at}_${this.nextMessage++}`;
     const chatId = run && run.chat.id !== MAIN_CHAT ? { chatId: run.chat.id } : {};
@@ -843,6 +995,7 @@ export class LocalRunner implements Runner {
       ...(tool ? { tool } : {}),
       ...chatId,
     });
+    return id;
   }
 
   private term(rec: Rec, data: string, save = true) {
@@ -870,13 +1023,17 @@ export class LocalRunner implements Runner {
     try {
       await this.workspaceReady(rec);
       if (abandoned()) return;
+      await this.checkpoint(rec, run);
+      if (abandoned()) return;
       const cwd = rec.worktree as string;
       // The main chat's agent needs the task if it never saw it. Other chats start clean.
       const session = run.agentSession;
       const { prompt: task } = rec.task;
       const prompt = session || message === task || run.chat.id !== MAIN_CHAT ? message : `${task}\n\n${message}`;
+      const { options } = run.chat;
+      run.startedWith = optionsKey(run.chat);
       run.session = this.adapterFor(run.chat.agent).start(
-        { taskId: rec.task.id, cwd, prompt, env: this.workspaceEnv(rec), ...(session ? { session } : {}) },
+        { taskId: rec.task.id, cwd, prompt, env: this.workspaceEnv(rec), ...(session ? { session } : {}), ...(options ? { options } : {}) },
         (event) => {
           if (!abandoned()) rec.queue = rec.queue.then(() => this.onAgentEvent(rec, run, event));
         },
@@ -904,10 +1061,18 @@ export class LocalRunner implements Runner {
     if (!rec.worktree) {
       const path = join(this.worktrees, task.id);
       this.term(rec, `\x1b[2mCreating worktree for ${task.branch}…\x1b[0m\r\n`);
-      const create = () =>
-        rec.existingBranch
-          ? addWorktree(this.repo.path, path, task.branch)
-          : createWorktree(this.repo.path, path, task.branch, task.baseBranch);
+      const create = async () => {
+        // An earlier start can stop part way, as when Solus quits mid-setup, leaving these behind.
+        if (existsSync(join(path, ".git"))) return;
+        try {
+          if (rec.existingBranch) await addWorktree(this.repo.path, path, task.branch);
+          else await createWorktree(this.repo.path, path, task.branch, task.baseBranch);
+        } catch (err) {
+          if (existsSync(join(path, ".git"))) return;
+          if (rec.existingBranch || !(await branchExists(this.repo.path, task.branch))) throw err;
+          await addWorktree(this.repo.path, path, task.branch);
+        }
+      };
       const created = this.creating.then(create, create);
       this.creating = created.catch(() => {});
       await created;
@@ -951,6 +1116,9 @@ export class LocalRunner implements Runner {
           this.save();
           if (run.chat.state === "working") run.launching = this.launch(rec, run, run.lastMessage ?? rec.task.prompt);
           break;
+        case "branch_name":
+          await this.nameBranch(rec, event.name);
+          break;
         case "ask":
           if (run.chat.state === "working") this.setChat(rec, run, "needs_input", { question: event.question });
           break;
@@ -964,7 +1132,9 @@ export class LocalRunner implements Runner {
           break;
         case "turn_end":
           await this.refreshDiff(rec);
-          if (run.chat.state === "working") this.setChat(rec, run, "ready_for_review");
+          if (run.chat.state !== "working") break;
+          if (run.chat.queued?.length) await this.sendNextQueued(rec, run);
+          else this.setChat(rec, run, "ready_for_review");
           break;
         case "error":
           delete run.session;
@@ -979,6 +1149,28 @@ export class LocalRunner implements Runner {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** Only Solus's own branches, once, and never one a pull request depends on. */
+  private async nameBranch(rec: Rec, name: string) {
+    const { task } = rec;
+    if (task.branchNamed || task.pullRequest || rec.existingBranch || !/[a-z0-9]/i.test(name) || !rec.worktree) return;
+    task.branchNamed = true;
+    const taken = new Set([...this.records.values()].map((r) => r.task.branch));
+    const branch = await uniqueBranch(this.repo.path, name, taken);
+    await git(rec.worktree, ["branch", "-m", task.branch, branch]);
+    task.branch = branch;
+    this.updated(rec);
+  }
+
+  /** The turn ended with messages waiting, so the next one starts another. */
+  private async sendNextQueued(rec: Rec, run: Run) {
+    const next = run.chat.queued?.shift();
+    if (!next) return;
+    if (run.chat.queued?.length === 0) delete run.chat.queued;
+    this.updated(rec);
+    run.sending = this.addMessage(rec, "user", next.text, undefined, run);
+    await this.deliver(rec, run, next.text);
   }
 
   private onText(rec: Rec, run: Run, event: Extract<AgentEvent, { type: "text" }>) {

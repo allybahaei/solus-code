@@ -56,7 +56,7 @@ export function Transcript({ task, messages, newChat = false }: { task: Task; me
         const el = e.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
       }}
-      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+      className="no-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
     >
       <div className="w-full space-y-5 px-4 py-6 text-sm leading-relaxed">
         {items.length === 0 && (

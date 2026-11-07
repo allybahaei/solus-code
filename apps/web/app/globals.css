@@ -7,6 +7,13 @@
  * Every colour is a token below; components never use raw colours.
  */
 @custom-variant desktop (&:where(.desktop, .desktop *));
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @custom-variant dark {
   @media (prefers-color-scheme: dark) {
     &:not(:where(.light, .light *)) {

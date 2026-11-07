@@ -2,65 +2,77 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent } from "./agent";
-import { CodexStream, unwrapCommand, type CodexLine } from "./codex-stream";
+import { CodexStream, unwrapCommand, type CodexNotification } from "./codex-stream";
 
-const FIXTURES = join(__dirname, "../../../../docs/spike-2a/fixtures");
+const RECORDED = join(__dirname, "../../../../docs/spike-6/fixtures/codex-app-server.jsonl");
 
-function replay(name: string) {
-  const stream = new CodexStream("/repo", 1);
-  const events = readFileSync(join(FIXTURES, name), "utf8")
+function replay() {
+  const stream = new CodexStream("/repo");
+  return readFileSync(RECORDED, "utf8")
     .split("\n")
     .filter(Boolean)
-    .flatMap((l) => stream.push(JSON.parse(l) as CodexLine));
-  return { events, finished: stream.finished };
+    .flatMap((l) => stream.push(JSON.parse(l) as CodexNotification));
 }
 
 const of = <T extends AgentEvent["type"]>(events: AgentEvent[], type: T) =>
   events.filter((e): e is Extract<AgentEvent, { type: T }> => e.type === type);
 
-describe("recorded Codex runs", () => {
-  it("reads an edit", () => {
-    const { events, finished } = replay("codex-1.jsonl");
-    expect(finished).toBe(true);
-    expect(of(events, "session")[0]?.id).toMatch(/^01a1b0/);
-    expect(of(events, "tool").map((t) => t.tool)).toEqual(["Bash", "Bash", "Edit"]);
-    expect(of(events, "tool").at(-1)?.text).toBe("math.js");
-    expect(of(events, "text").every((t) => t.done)).toBe(true);
-    expect(of(events, "text").length).toBeGreaterThan(0);
-    expect(of(events, "files_changed").length).toBeGreaterThan(0);
+describe("a recorded Codex run", () => {
+  it("streams each reply in pieces and closes it once", () => {
+    const text = of(replay(), "text");
+    const ids = [...new Set(text.map((t) => t.id))];
+    expect(ids.length).toBeGreaterThan(1);
+    for (const id of ids) {
+      const parts = text.filter((t) => t.id === id);
+      expect(parts.length).toBeGreaterThan(1);
+      expect(parts.filter((t) => t.done)).toHaveLength(1);
+      expect(parts.at(-1)?.done).toBe(true);
+    }
+    expect(text.filter((t) => t.id === ids[0]).map((t) => t.chunk).join("")).toMatch(/^A Git worktree/);
   });
 
   it("shows the real command, not the shell wrapper", () => {
-    const { events } = replay("codex-1.jsonl");
-    expect(of(events, "tool")[0]?.text).toMatch(/^pwd && rg/);
-    expect(of(events, "terminal")[0]?.data).toMatch(/^\$ pwd && rg/);
+    const events = replay();
+    expect(of(events, "tool")[0]).toMatchObject({ tool: "Bash", text: "curl -sI https://example.com | head -1" });
+    expect(of(events, "terminal")[0]?.data).toMatch(/^\$ curl/);
   });
 
-  it("marks a failed command in the terminal", () => {
-    const { events } = replay("codex-4.jsonl");
-    expect(of(events, "terminal")[0]?.data).toContain("(exit 6)");
-  });
-
-  it("hides Solus's own tool from the tool rows", () => {
-    const { events } = replay("codex-5.jsonl");
-    expect(of(events, "tool").map((t) => t.tool)).not.toContain("solus.ask_user");
+  it("ends each turn", () => {
+    expect(of(replay(), "turn_end")).toHaveLength(3);
   });
 });
 
-it("reports a failed turn once, with its message", () => {
-  const stream = new CodexStream("/repo", 1);
-  expect(stream.push({ type: "error" })).toEqual([]);
-  expect(stream.push({ type: "turn.failed", error: { message: "Log in again." } })).toEqual([
+const item = (fields: Record<string, unknown>): CodexNotification => ({
+  method: "item/completed",
+  params: { item: { id: "i", type: "x", ...fields } },
+});
+
+it("marks a failed command in the terminal", () => {
+  const [terminal] = new CodexStream("/repo").push(item({ type: "commandExecution", command: "ls", exitCode: 6 }));
+  expect(terminal).toMatchObject({ data: expect.stringContaining("(exit 6)") });
+});
+
+it("reports edits that happened, not ones that were declined", () => {
+  const change = { type: "fileChange", changes: [{ path: "/repo/math.js", kind: "update" }] };
+  const stream = new CodexStream("/repo");
+  expect(stream.push(item({ ...change, status: "completed" }))).toEqual([{ type: "tool", tool: "Edit", text: "math.js" }, { type: "files_changed" }]);
+  expect(stream.push(item({ ...change, status: "declined" }))).toEqual([]);
+});
+
+it("hides Solus's own tool from the tool rows", () => {
+  const started = (server: string): CodexNotification => ({ method: "item/started", params: { item: { id: "i", type: "mcpToolCall", server, tool: "t" } } });
+  const stream = new CodexStream("/repo");
+  expect(stream.push(started("solus"))).toEqual([]);
+  expect(stream.push(started("docs"))).toHaveLength(1);
+});
+
+it("reports a failed turn once, with its message, and nothing for an interrupted one", () => {
+  const stream = new CodexStream("/repo");
+  expect(stream.push({ method: "error" })).toEqual([]);
+  expect(stream.push({ method: "turn/completed", params: { turn: { status: "failed", error: { message: "Log in again." } } } })).toEqual([
     { type: "error", error: { message: "Log in again." } },
   ]);
-  expect(stream.finished).toBe(true);
-});
-
-it("keeps message ids unique across turns", () => {
-  const line: CodexLine = { type: "item.completed", item: { id: "item_0", type: "agent_message", text: "Hi" } };
-  const [a] = new CodexStream("/repo", 1).push(line);
-  const [b] = new CodexStream("/repo", 2).push(line);
-  expect(a).not.toEqual(b);
+  expect(stream.push({ method: "turn/completed", params: { turn: { status: "interrupted" } } })).toEqual([]);
 });
 
 it("unwraps quoted commands and leaves others alone", () => {

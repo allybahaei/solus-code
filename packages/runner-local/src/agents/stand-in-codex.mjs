@@ -1,10 +1,11 @@
-// A stand-in `codex` for tests. Speaks `exec --json` and drives the real MCP bridge.
+// A stand-in `codex` for tests. Speaks `app-server` JSON-RPC and drives the real MCP bridge.
 import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const argv = process.argv.slice(2);
-appendFileSync(process.env.STAND_IN_LOG, JSON.stringify({ argv, stdin: process.stdin.isTTY ?? null }) + "\n");
+const log = (entry) => appendFileSync(process.env.STAND_IN_LOG, JSON.stringify(entry) + "\n");
+log({ argv });
 
 const config = Object.fromEntries(
   argv.flatMap((a, i) => {
@@ -13,15 +14,15 @@ const config = Object.fromEntries(
     return [[a.slice(0, at), JSON.parse(a.slice(at + 1))]];
   }),
 );
-const positional = argv.slice(argv.indexOf("--") + 1);
-const resume = argv[1] === "resume";
-const thread = resume ? positional[0] : "thread-1";
-const prompt = positional.at(-1);
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\n");
+const notify = (method, params) => out({ method, params });
+const answers = new Map();
+let serverRequest = 1000;
+let turns = 0;
 
-if (thread === "gone") {
-  process.stderr.write("Error: thread/resume: thread/resume failed: no rollout found for thread id gone (code -32600)\n");
-  process.exit(1);
+if (argv[0] !== "app-server") {
+  process.stderr.write("error: unrecognized subcommand 'app-server'\n");
+  process.exit(2);
 }
 
 function askThroughBridge(question) {
@@ -43,23 +44,59 @@ function askThroughBridge(question) {
   });
 }
 
-out({ type: "thread.started", thread_id: thread });
-out({ type: "turn.started" });
-if (prompt.includes("[crash]")) {
-  process.stderr.write("something broke\n");
-  process.exit(3);
+/** A request to Solus. Resolves with its reply. */
+function request(method, params) {
+  const id = ++serverRequest;
+  out({ id, method, params });
+  return new Promise((resolve) => answers.set(id, resolve));
 }
-if (prompt.includes("[fail]")) {
-  out({ type: "error", message: "Your login expired." });
-  out({ type: "turn.failed", error: { message: "Your login expired." } });
-  process.exit(1);
+
+const finish = (turn, status = "completed", error = null) => notify("turn/completed", { threadId: "thread-1", turn: { id: turn, status, error } });
+
+async function runTurn(turn, prompt) {
+  const itemId = `msg_${turn}`;
+  if (prompt.includes("[crash]")) {
+    process.stderr.write("something broke\n");
+    process.exit(3);
+  }
+  if (prompt.includes("[fail]")) {
+    notify("error", { error: { message: "Your login expired." }, willRetry: false });
+    return finish(turn, "failed", { message: "Your login expired." });
+  }
+  if (prompt.includes("[expired]")) {
+    return finish(turn, "failed", { message: "Your refresh token was already used. Please log out and sign in again." });
+  }
+  if (prompt.includes("[hang]")) return;
+  if (prompt.includes("[slow]")) await new Promise((r) => setTimeout(r, 300));
+  if (prompt.includes("[ask]")) await askThroughBridge("Which one?");
+  if (prompt.includes("[token]")) log({ tokenReply: await request("account/chatgptAuthTokens/refresh", {}) });
+  if (prompt.includes("[approve]")) {
+    const reply = await request("item/commandExecution/requestApproval", { command: "/bin/zsh -lc 'curl example.com'", itemId: "c1" });
+    log({ decision: reply.result?.decision });
+  }
+  if (prompt.includes("[whole]")) {
+    notify("item/completed", { item: { id: itemId, type: "agentMessage", text: "All at once" } });
+  } else {
+    notify("item/started", { item: { id: itemId, type: "agentMessage", text: "" } });
+    for (const delta of ["Heard: ", prompt]) notify("item/agentMessage/delta", { itemId, delta });
+    notify("item/completed", { item: { id: itemId, type: "agentMessage", text: `Heard: ${prompt}` } });
+  }
+  finish(turn);
 }
-if (prompt.includes("[expired]")) {
-  out({ type: "turn.failed", error: { message: "Your refresh token was already used. Please log out and sign in again." } });
-  process.exit(1);
-}
-if (prompt.includes("[hang]")) await new Promise(() => setInterval(() => {}, 1000));
-if (prompt.includes("[slow]")) await new Promise((r) => setTimeout(r, 300));
-if (prompt.includes("[ask]")) await askThroughBridge("Which one?");
-out({ type: "item.completed", item: { id: "item_0", type: "agent_message", text: `Heard: ${prompt.split("\n").at(-1)}` } });
-out({ type: "turn.completed", usage: {} });
+
+createInterface({ input: process.stdin }).on("line", (raw) => {
+  const msg = JSON.parse(raw);
+  if (msg.id !== undefined && !msg.method) return answers.get(msg.id)?.(msg);
+  log({ method: msg.method, params: msg.params });
+  if (msg.method === "initialize") return out({ id: msg.id, result: { userAgent: "stand-in" } });
+  if (msg.method === "thread/start") return out({ id: msg.id, result: { thread: { id: "thread-1" } } });
+  if (msg.method === "thread/resume") {
+    if (msg.params.threadId === "gone") return out({ id: msg.id, error: { code: -32600, message: "no rollout found for thread id gone" } });
+    return out({ id: msg.id, result: { thread: { id: msg.params.threadId } } });
+  }
+  if (msg.method === "turn/start") {
+    const turn = `turn-${++turns}`;
+    out({ id: msg.id, result: { turn: { id: turn, status: "inProgress" } } });
+    void runTurn(turn, msg.params.input[0].text);
+  }
+});
